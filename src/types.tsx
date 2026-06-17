@@ -1,19 +1,20 @@
-export type GroupType = 'familia' | 'amigos' | 'conocidos' | 'otros';
+export type GroupType = "familia" | "amigos" | "conocidos" | "otros";
 
-export type DebtStatus = 'pendiente' | 'pagada' | 'parcial';
+export type DebtStatus = "pendiente" | "pagada" | "parcial";
 
 export interface Member {
   id: string;
   name: string;
-  email?: string;
-  avatar: string; // initials-based color
+  email: string;
+  userId?: string; // se llena cuando el miembro entra con su magic link
+  avatar: string; // initials-based color (legacy, ya no se usa para render)
   joinedAt: string;
 }
 
 export interface Debt {
   id: string;
-  debtorId: string;   // quien debe
-  lenderId: string;   // quien prestó
+  debtorId: string; // quien debe
+  lenderId: string; // quien prestó
   amount: number;
   currency: string;
   reason: string;
@@ -31,11 +32,7 @@ export interface Group {
   members: Member[];
   debts: Debt[];
   createdAt: string;
-  accessCode: string; // simple code to join
-}
-
-export interface AppData {
-  groups: Record<string, Group>;
+  accessCode: string; // código simple para unirse
 }
 
 export interface DebtSummary {

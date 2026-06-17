@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -6,9 +6,16 @@ import {
   useParams,
   useNavigate,
 } from "react-router-dom";
-import { v4 as uuidv4 } from "uuid";
-import type { Group, GroupType, Member, Debt } from "./types.tsx";
-import { getGroups, setGroup, findGroupByCode } from "./store.tsx";
+import type { Group, GroupType, Debt } from "./types.tsx";
+import {
+  createGroup as dbCreateGroup,
+  findGroupByCode,
+  getFullGroup,
+  addMember as dbAddMember,
+  addDebt as dbAddDebt,
+  markDebtPaid as dbMarkDebtPaid,
+} from "./lib/db";
+import { useCurrentUser, signOut } from "./lib/auth";
 
 // Design tokens
 const C = {
@@ -67,15 +74,6 @@ const baseSelect: CSSProperties = {
   backgroundPosition: "right 14px center",
   paddingRight: 36,
 };
-
-// Helpers
-function generateCode(length = 5): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
-  const values = crypto.getRandomValues(new Uint8Array(length));
-  for (let i = 0; i < length; i++) result += chars[values[i] % chars.length];
-  return result;
-}
 
 function computeSummaries(group: Group) {
   const sums: Record<
@@ -346,34 +344,50 @@ function KpiCard({
 }
 
 // HOME PAGE
-function Home({
-  onCreateGroup,
-}: {
-  onCreateGroup: (
-    name: string,
-    type: GroupType,
-    description?: string,
-  ) => string;
-}) {
+function Home() {
   const [name, setName] = useState("");
   const [type, setType] = useState<GroupType>("amigos");
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
   const [showDesc, setShowDesc] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const navigate = useNavigate();
 
-  const handleCreate = () => {
-    if (name.trim()) {
-      const id = onCreateGroup(name, type, description);
-      navigate(`/group/${id}`);
+  const handleCreate = async () => {
+    if (!name.trim() || creating) return;
+    setCreating(true);
+    try {
+      const group = await dbCreateGroup(
+        name.trim(),
+        type,
+        description.trim() || undefined,
+      );
+      navigate(`/group/${group.id}`);
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo crear el grupo. Intentá de nuevo.");
+    } finally {
+      setCreating(false);
     }
   };
 
-  const handleJoin = () => {
-    const group = findGroupByCode(code.toUpperCase());
-    if (group) navigate(`/group/${group.id}`);
-    else alert("Código inválido");
-    setCode("");
+  const handleJoin = async () => {
+    if (code.length < 5 || joining) return;
+    setJoining(true);
+    setJoinError("");
+    try {
+      const group = await findGroupByCode(code);
+      if (group) navigate(`/group/${group.id}`);
+      else setJoinError("Código inválido");
+    } catch (err) {
+      console.error(err);
+      setJoinError("No se pudo verificar el código");
+    } finally {
+      setJoining(false);
+      setCode("");
+    }
   };
 
   const pageStyle: CSSProperties = {
@@ -384,9 +398,7 @@ function Home({
       "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     WebkitFontSmoothing: "antialiased",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
+    flexDirection: "column",
     position: "relative",
     overflow: "hidden",
   };
@@ -409,8 +421,18 @@ function Home({
         }}
       />
 
-      <div style={{ maxWidth: 420, width: "100%", position: "relative" }}>
-        {/* Header */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div style={{ maxWidth: 420, width: "100%", position: "relative" }}>
+          {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div
             style={{
@@ -515,10 +537,10 @@ function Home({
             )}
             <Btn
               onClick={handleCreate}
-              disabled={!name.trim()}
+              disabled={!name.trim() || creating}
               style={{ marginTop: 4 }}
             >
-              Crear Grupo →
+              {creating ? "Creando…" : "Crear Grupo →"}
             </Btn>
           </div>
         </div>
@@ -574,51 +596,141 @@ function Home({
                 padding: "16px",
               }}
             />
+            {joinError && (
+              <div style={{ color: C.red, fontSize: 12, textAlign: "center" }}>
+                {joinError}
+              </div>
+            )}
             <Btn
               onClick={handleJoin}
-              disabled={code.length < 5}
+              disabled={code.length < 5 || joining}
               variant="secondary"
             >
-              Unirse al grupo
+              {joining ? "Verificando…" : "Unirse al grupo"}
             </Btn>
           </div>
         </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          borderTop: `1px solid ${C.border}`,
+          padding: "20px 24px",
+          textAlign: "center",
+          color: C.text3,
+          fontSize: 13,
+          marginTop: 40,
+        }}
+      >
+        RegistroDeudas
       </div>
     </div>
   );
 }
 
 // GROUP PAGE
-function GroupPage({
-  groups,
-  onUpdateGroup,
-}: {
-  groups: Record<string, Group>;
-  onUpdateGroup: (g: Group) => void;
-}) {
+function GroupPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const group = id ? groups[id] : null;
+  const { user } = useCurrentUser();
+
+  // undefined = cargando, null = no existe
+  const [group, setGroupState] = useState<Group | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState("");
 
   const [memberName, setMemberName] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState("");
+
   const [debtDebtor, setDebtDebtor] = useState("");
   const [debtLender, setDebtLender] = useState("");
   const [debtAmount, setDebtAmount] = useState("");
   const [debtCurrency, setDebtCurrency] = useState("CRC");
   const [debtReason, setDebtReason] = useState("");
+  const [addingDebt, setAddingDebt] = useState(false);
+
   const [searchDebtor, setSearchDebtor] = useState("");
   const [searchLender, setSearchLender] = useState("");
   const [searchResult, setSearchResult] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+
+  const refetch = async () => {
+    if (!id) return;
+    try {
+      const g = await getFullGroup(id);
+      setGroupState(g);
+    } catch (err) {
+      console.error(err);
+      setLoadError("No se pudo cargar el grupo.");
+      setGroupState(null);
+    }
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      if (!id) return;
+      try {
+        const g = await getFullGroup(id);
+        setGroupState(g);
+      } catch (err) {
+        console.error(err);
+        setLoadError("No se pudo cargar el grupo.");
+        setGroupState(null);
+      }
+    };
+    load();
+  }, [id]);
+
+  // Vuelve a cargar cuando se resuelve la sesión, así el botón de
+  // confirmar pago se habilita apenas el magic link vincula al usuario.
+  useEffect(() => {
+    const load = async () => {
+      if (user) {
+        if (!id) return;
+        try {
+          const g = await getFullGroup(id);
+          setGroupState(g);
+        } catch (err) {
+          console.error(err);
+          setLoadError("No se pudo cargar el grupo.");
+          setGroupState(null);
+        }
+      }
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const pageStyle: CSSProperties = {
     minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
     background: C.bg,
     color: C.text,
     fontFamily:
       "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     WebkitFontSmoothing: "antialiased",
   };
+
+  if (group === undefined) {
+    return (
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p style={{ color: C.text2 }}>Cargando…</p>
+      </div>
+    );
+  }
 
   if (!group) {
     return (
@@ -632,7 +744,7 @@ function GroupPage({
       >
         <div style={{ textAlign: "center" }}>
           <p style={{ color: C.text2, marginBottom: 20 }}>
-            Grupo no encontrado
+            {loadError || "Grupo no encontrado"}
           </p>
           <Btn
             onClick={() => navigate("/")}
@@ -640,10 +752,23 @@ function GroupPage({
           >
             Volver al inicio
           </Btn>
-        </div>
       </div>
-    );
-  }
+
+      {/* Footer */}
+      <div
+        style={{
+          borderTop: `1px solid ${C.border}`,
+          padding: "20px 24px",
+          textAlign: "center",
+          color: C.text3,
+          fontSize: 13,
+        }}
+      >
+        RegistroDeudas
+      </div>
+    </div>
+  );
+}
 
   const summaries = computeSummaries(group);
   const activeDebts = group.debts.filter((d) => d.status !== "pagada");
@@ -651,54 +776,89 @@ function GroupPage({
   const totalIsOwed = summaries.reduce((s, x) => s + x.isOwed, 0);
   const totalNet = totalIsOwed - totalOwes;
 
+  const myMember = user
+    ? group.members.find((m) => m.userId === user.id)
+    : undefined;
+
+  const canConfirm = (d: Debt) =>
+    !!myMember && (myMember.id === d.debtorId || myMember.id === d.lenderId);
+
   const copyCode = () => {
     navigator.clipboard.writeText(group.accessCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const addMember = () => {
-    if (!memberName.trim()) return;
-    const member: Member = {
-      id: uuidv4(),
-      name: memberName,
-      avatar: "",
-      joinedAt: new Date().toISOString(),
-    };
-    onUpdateGroup({ ...group, members: [...group.members, member] });
-    setMemberName("");
+  const addMember = async () => {
+    if (!memberName.trim() || !memberEmail.trim() || addingMember) return;
+    setAddingMember(true);
+    setInviteMessage("");
+    try {
+      await dbAddMember(
+        group.id,
+        memberName.trim(),
+        memberEmail.trim(),
+        `${window.location.origin}/group/${group.id}`,
+      );
+      setMemberName("");
+      setMemberEmail("");
+      setInviteMessage(`Invitación enviada a ${memberEmail.trim()}`);
+      await refetch();
+    } catch (err) {
+      console.error(err);
+      setInviteMessage(
+        "No se pudo agregar el miembro (¿ese correo ya está en el grupo?).",
+      );
+    } finally {
+      setAddingMember(false);
+    }
   };
 
-  const addDebt = () => {
+  const addDebt = async () => {
     const amount = parseFloat(debtAmount);
-    if (!debtDebtor || !debtLender || !amount || debtDebtor === debtLender)
+    if (
+      !debtDebtor ||
+      !debtLender ||
+      !amount ||
+      debtDebtor === debtLender ||
+      addingDebt
+    )
       return;
-    const debt: Debt = {
-      id: uuidv4(),
-      debtorId: debtDebtor,
-      lenderId: debtLender,
-      amount,
-      currency: debtCurrency,
-      reason: debtReason,
-      date: new Date().toISOString().split("T")[0],
-      status: "pendiente",
-      paidAmount: 0,
-      createdAt: new Date().toISOString(),
-    };
-    onUpdateGroup({ ...group, debts: [...group.debts, debt] });
-    setDebtDebtor("");
-    setDebtLender("");
-    setDebtAmount("");
-    setDebtReason("");
+    setAddingDebt(true);
+    try {
+      await dbAddDebt(
+        group.id,
+        debtDebtor,
+        debtLender,
+        amount,
+        debtCurrency,
+        debtReason,
+      );
+      setDebtDebtor("");
+      setDebtLender("");
+      setDebtAmount("");
+      setDebtReason("");
+      await refetch();
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo registrar la deuda.");
+    } finally {
+      setAddingDebt(false);
+    }
   };
 
-  const markPaid = (debtId: string) => {
-    const debts = group.debts.map((d) =>
-      d.id === debtId
-        ? { ...d, status: "pagada" as const, paidAmount: d.amount }
-        : d,
-    );
-    onUpdateGroup({ ...group, debts });
+  const markPaid = async (debtId: string, amount: number) => {
+    setPayingId(debtId);
+    try {
+      await dbMarkDebtPaid(debtId, amount);
+      await refetch();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "No se pudo confirmar el pago.",
+      );
+    } finally {
+      setPayingId(null);
+    }
   };
 
   const doSearch = () => {
@@ -777,23 +937,46 @@ function GroupPage({
           </div>
         </div>
 
-        <button
-          onClick={copyCode}
-          style={{
-            background: C.accentLo,
-            border: `1px solid rgba(124,109,250,0.3)`,
-            borderRadius: 10,
-            padding: "6px 14px",
-            color: C.accentHi,
-            fontFamily: "'SF Mono', 'Fira Code', monospace",
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: "0.16em",
-            cursor: "pointer",
-          }}
-        >
-          {copied ? "✓ Copiado" : group.accessCode}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {user && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 11, color: C.text2 }}>
+                {myMember ? myMember.name : user.email}
+              </div>
+              <button
+                onClick={() => signOut()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: C.text3,
+                  fontSize: 10,
+                  cursor: "pointer",
+                  padding: 0,
+                  fontFamily: "inherit",
+                }}
+              >
+                Salir
+              </button>
+            </div>
+          )}
+          <button
+            onClick={copyCode}
+            style={{
+              background: C.accentLo,
+              border: `1px solid rgba(124,109,250,0.3)`,
+              borderRadius: 10,
+              padding: "6px 14px",
+              color: C.accentHi,
+              fontFamily: "'SF Mono', 'Fira Code', monospace",
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: "0.16em",
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "✓ Copiado" : group.accessCode}
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -981,22 +1164,38 @@ function GroupPage({
                           >
                             {d.currency}
                           </div>
-                          <button
-                            onClick={() => markPaid(d.id)}
-                            style={{
-                              background: C.greenLo,
-                              border: `1px solid rgba(74,222,128,0.25)`,
-                              borderRadius: 8,
-                              padding: "4px 12px",
-                              color: C.green,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            Pagar ✓
-                          </button>
+                          {canConfirm(d) ? (
+                            <button
+                              onClick={() => markPaid(d.id, d.amount)}
+                              disabled={payingId === d.id}
+                              style={{
+                                background: C.greenLo,
+                                border: `1px solid rgba(74,222,128,0.25)`,
+                                borderRadius: 8,
+                                padding: "4px 12px",
+                                color: C.green,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor:
+                                  payingId === d.id ? "not-allowed" : "pointer",
+                                opacity: payingId === d.id ? 0.5 : 1,
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {payingId === d.id ? "…" : "Pagar ✓"}
+                            </button>
+                          ) : (
+                            <div
+                              style={{
+                                fontSize: 9,
+                                color: C.text3,
+                                maxWidth: 90,
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              Solo {debtor?.name} o {lender?.name} confirman
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1127,7 +1326,7 @@ function GroupPage({
                             color: x.isOwed > 0 ? C.green : C.text3,
                           }}
                         >
-                          ₡{fmt(x.isOwed)}
+                        ₡{fmt(x.isOwed)}
                         </div>
                       </div>
                     </div>
@@ -1234,9 +1433,25 @@ function GroupPage({
                   onChange={setMemberName}
                   placeholder="Nombre"
                 />
-                <Btn onClick={addMember} disabled={!memberName.trim()}>
-                  + Agregar
+                <Input
+                  value={memberEmail}
+                  onChange={setMemberEmail}
+                  placeholder="Correo"
+                  type="email"
+                />
+                <Btn
+                  onClick={addMember}
+                  disabled={
+                    !memberName.trim() || !memberEmail.trim() || addingMember
+                  }
+                >
+                  {addingMember ? "Enviando…" : "+ Invitar"}
                 </Btn>
+                {inviteMessage && (
+                  <div style={{ fontSize: 12, color: C.text2 }}>
+                    {inviteMessage}
+                  </div>
+                )}
               </div>
               {group.members.length > 0 && (
                 <div style={{ marginTop: 16 }}>
@@ -1253,9 +1468,23 @@ function GroupPage({
                     >
                       <Avatar name={m.name} size={26} />
                       <span
-                        style={{ fontSize: 13, color: C.text, fontWeight: 500 }}
+                        style={{
+                          fontSize: 13,
+                          color: C.text,
+                          fontWeight: 500,
+                          flex: 1,
+                        }}
                       >
                         {m.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: m.userId ? C.green : C.text3,
+                        }}
+                      >
+                        {m.userId ? "✓ activo" : "pendiente"}
                       </span>
                     </div>
                   ))}
@@ -1321,10 +1550,11 @@ function GroupPage({
                     !debtDebtor ||
                     !debtLender ||
                     !debtAmount ||
-                    debtDebtor === debtLender
+                    debtDebtor === debtLender ||
+                    addingDebt
                   }
                 >
-                  + Registrar
+                  {addingDebt ? "Registrando…" : "+ Registrar"}
                 </Btn>
               </div>
             </div>
@@ -1403,39 +1633,11 @@ function GroupPage({
 
 // APP
 function App() {
-  const [groups, setGroups] = useState<Record<string, Group>>(() =>
-    getGroups(),
-  );
-
-  const createGroup = (name: string, type: GroupType, description?: string) => {
-    const group: Group = {
-      id: uuidv4(),
-      name,
-      type,
-      description,
-      members: [],
-      debts: [],
-      createdAt: new Date().toISOString(),
-      accessCode: generateCode(),
-    };
-    setGroup(group);
-    setGroups((prev) => ({ ...prev, [group.id]: group }));
-    return group.id;
-  };
-
-  const updateGroup = (group: Group) => {
-    setGroup(group);
-    setGroups((prev) => ({ ...prev, [group.id]: group }));
-  };
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home onCreateGroup={createGroup} />} />
-        <Route
-          path="/group/:id"
-          element={<GroupPage groups={groups} onUpdateGroup={updateGroup} />}
-        />
+        <Route path="/" element={<Home />} />
+        <Route path="/group/:id" element={<GroupPage />} />
       </Routes>
     </BrowserRouter>
   );
