@@ -1,4 +1,4 @@
-import { useState, useEffect, CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   BrowserRouter,
   Routes,
