@@ -624,7 +624,7 @@ function Home() {
           marginTop: 40,
         }}
       >
-        RegistroDeudas
+        RegistroDeudass
       </div>
     </div>
   );
@@ -764,7 +764,7 @@ function GroupPage() {
           fontSize: 13,
         }}
       >
-        RegistroDeudas
+        RegistroDeudass
       </div>
     </div>
   );
