@@ -8,99 +8,100 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
 </head>
-<body>
+<body class="font-sans bg-surface text-text min-h-screen overflow-x-hidden">
   <div id="app">
-    <!-- Home Screen -->
-    <div id="screen-home" class="screen active">
-      <div class="home-bg"></div>
-      <header class="home-header">
-        <div class="logo">
-          <span class="logo-icon">⬡</span>
-          <span class="logo-text">DeudaTrack</span>
+    <!-- HOME SCREEN -->
+    <div id="screen-home" class="flex min-h-screen flex-col">
+      <div class="fixed inset-0 z-0 pointer-events-none" style="background:radial-gradient(ellipse at 20% 20%,rgba(108,99,255,0.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(34,211,160,0.08) 0%,transparent 60%)"></div>
+
+      <header class="relative z-10 text-center pt-16 pb-10 px-6">
+        <div class="flex items-center justify-center gap-3 mb-3">
+          <span class="text-4xl text-accent">⬡</span>
+          <span class="text-3xl font-bold tracking-tight">DeudaTrack</span>
         </div>
-        <p class="logo-sub">Gestiona deudas con familia, amigos y más</p>
+        <p class="text-text2 text-base font-normal">Gestiona deudas con familia, amigos y más</p>
       </header>
 
-      <main class="home-main">
-        <div class="home-actions">
-          <button class="btn-primary btn-xl" onclick="App.showCreateGroup()">
-            <span class="btn-icon">+</span>
+      <main class="relative z-10 max-w-[1000px] mx-auto px-6 pb-20 w-full">
+        <div class="flex gap-4 justify-center mb-14 flex-wrap max-sm:flex-col max-sm:items-stretch">
+          <button class="bg-accent text-white border-none cursor-pointer font-sans font-semibold rounded-lg transition-all duration-200 hover:bg-accent-2 hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(108,99,255,0.4)] px-8 py-4 text-base flex items-center gap-2.5 justify-center" onclick="App.showCreateGroup()">
+            <span class="text-[1.2em] leading-none">+</span>
             Crear Grupo
           </button>
-          <button class="btn-ghost btn-xl" onclick="App.showJoinGroup()">
-            <span class="btn-icon">→</span>
+          <button class="bg-transparent text-text border border-border-2 cursor-pointer font-sans font-medium rounded-lg transition-all duration-200 hover:bg-surface-3 hover:border-accent px-8 py-4 text-base flex items-center gap-2.5 justify-center" onclick="App.showJoinGroup()">
+            <span class="text-[1.2em] leading-none">→</span>
             Unirme con Código
           </button>
         </div>
 
-        <div id="groups-list" class="groups-grid"></div>
+        <div id="groups-list" class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
       </main>
     </div>
 
-    <!-- Group Screen -->
-    <div id="screen-group" class="screen">
-      <header class="group-header">
-        <button class="back-btn" onclick="App.goHome()">← Grupos</button>
-        <div class="group-header-info">
-          <h1 id="group-title"></h1>
-          <div class="group-meta">
-            <span id="group-type-badge" class="type-badge"></span>
-            <span id="group-code" class="code-badge"></span>
+    <!-- GROUP SCREEN -->
+    <div id="screen-group" class="hidden min-h-screen flex-col">
+      <header class="flex items-center gap-4 px-6 py-5 border-b border-border bg-surface sticky top-0 z-10 flex-wrap">
+        <button class="bg-none border-none text-text2 cursor-pointer font-sans text-sm px-3 py-2 rounded-md transition-all duration-150 whitespace-nowrap hover:bg-surface-3 hover:text-text shrink-0" onclick="App.goHome()">← Grupos</button>
+        <div class="flex-1 min-w-0">
+          <h1 id="group-title" class="text-[1.4rem] font-bold tracking-tight whitespace-nowrap overflow-hidden text-ellipsis"></h1>
+          <div class="flex gap-2 items-center mt-1 flex-wrap">
+            <span id="group-type-badge" class="text-xs font-semibold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-accent-2"></span>
+            <span id="group-code" class="font-mono text-[0.78rem] text-text3 bg-surface-3 px-2.5 py-0.5 rounded-full border border-border"></span>
           </div>
         </div>
-        <div class="header-actions">
-          <button class="btn-sm btn-outline" onclick="App.openAddMember()">+ Miembro</button>
-          <button class="btn-sm btn-primary" onclick="App.openAddDebt()">+ Deuda</button>
+        <div class="flex gap-2 shrink-0 max-sm:w-full max-sm:justify-stretch">
+          <button class="bg-transparent text-text2 border border-border-2 cursor-pointer font-sans font-medium rounded-lg transition-all duration-200 hover:border-accent hover:text-text px-4 py-2 text-sm whitespace-nowrap max-sm:flex-1 max-sm:text-center" onclick="App.openAddMember()">+ Miembro</button>
+          <button class="bg-accent text-white border-none cursor-pointer font-sans font-semibold rounded-lg transition-all duration-200 hover:bg-accent-2 hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(108,99,255,0.4)] px-4 py-2 text-sm whitespace-nowrap max-sm:flex-1 max-sm:text-center" onclick="App.openAddDebt()">+ Deuda</button>
         </div>
       </header>
 
-      <nav class="tab-nav">
-        <button class="tab-btn active" data-tab="resumen" onclick="App.switchTab('resumen')">Resumen</button>
-        <button class="tab-btn" data-tab="deudas" onclick="App.switchTab('deudas')">Deudas</button>
-        <button class="tab-btn" data-tab="miembros" onclick="App.switchTab('miembros')">Miembros</button>
+      <nav class="flex border-b border-border px-6 bg-surface overflow-x-auto">
+        <button class="tab-btn bg-none border-none text-text3 font-sans text-sm font-medium px-5 py-3.5 cursor-pointer relative transition-colors duration-150 after:content-[''] after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-0.5 after:bg-accent after:scale-x-0 after:transition-transform after:duration-200 data-[active=true]:text-text data-[active=true]:after:scale-x-100" data-tab="resumen" data-active="true" onclick="App.switchTab('resumen')">Resumen</button>
+        <button class="tab-btn bg-none border-none text-text3 font-sans text-sm font-medium px-5 py-3.5 cursor-pointer relative transition-colors duration-150 after:content-[''] after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-0.5 after:bg-accent after:scale-x-0 after:transition-transform after:duration-200 data-[active=true]:text-text data-[active=true]:after:scale-x-100" data-tab="deudas" onclick="App.switchTab('deudas')">Deudas</button>
+        <button class="tab-btn bg-none border-none text-text3 font-sans text-sm font-medium px-5 py-3.5 cursor-pointer relative transition-colors duration-150 after:content-[''] after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-0.5 after:bg-accent after:scale-x-0 after:transition-transform after:duration-200 data-[active=true]:text-text data-[active=true]:after:scale-x-100" data-tab="miembros" onclick="App.switchTab('miembros')">Miembros</button>
       </nav>
 
-      <main class="group-main">
+      <main class="px-6 py-6 max-w-[1100px] mx-auto w-full max-sm:px-4 max-sm:py-4">
         <!-- RESUMEN TAB -->
-        <div id="tab-resumen" class="tab-content active">
-          <div id="summary-cards" class="summary-grid"></div>
-          <div id="balance-chart" class="balance-section"></div>
+        <div id="tab-resumen" class="block">
+          <div id="summary-cards" class="grid gap-3.5 mb-8" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))"></div>
+          <div id="balance-chart"></div>
         </div>
 
         <!-- DEUDAS TAB -->
-        <div id="tab-deudas" class="tab-content">
-          <div class="filter-bar">
-            <select id="filter-status" onchange="App.filterDebts()">
+        <div id="tab-deudas" class="hidden">
+          <div class="flex gap-3 mb-5 flex-wrap">
+            <select id="filter-status" onchange="App.filterDebts()" class="bg-surface-2 text-text border border-border-2 rounded-lg px-3.5 py-2 font-sans text-sm cursor-pointer outline-none focus:border-accent">
               <option value="all">Todas</option>
               <option value="pendiente">Pendientes</option>
               <option value="parcial">Parciales</option>
               <option value="pagada">Pagadas</option>
             </select>
-            <select id="filter-member" onchange="App.filterDebts()">
+            <select id="filter-member" onchange="App.filterDebts()" class="bg-surface-2 text-text border border-border-2 rounded-lg px-3.5 py-2 font-sans text-sm cursor-pointer outline-none focus:border-accent">
               <option value="all">Todos los miembros</option>
             </select>
           </div>
-          <div id="debts-list" class="debts-list"></div>
+          <div id="debts-list" class="flex flex-col gap-2.5"></div>
         </div>
 
         <!-- MIEMBROS TAB -->
-        <div id="tab-miembros" class="tab-content">
-          <div id="members-list" class="members-list"></div>
+        <div id="tab-miembros" class="hidden">
+          <div id="members-list" class="grid gap-3.5" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))"></div>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- MODALS -->
-  <div id="modal-overlay" class="modal-overlay" onclick="App.closeModal()">
-    <div id="modal-box" class="modal-box" onclick="event.stopPropagation()">
-      <button class="modal-close" onclick="App.closeModal()">✕</button>
+  <!-- MODAL -->
+  <div id="modal-overlay" class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm hidden items-center justify-center p-6" onclick="App.closeModal()">
+    <div id="modal-box" class="bg-surface-2 border border-border-2 rounded-[14px] p-8 w-full max-w-[480px] relative animate-slide-up max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <button class="absolute top-4 right-4 bg-surface-3 border border-border text-text2 cursor-pointer rounded-md w-[30px] h-[30px] text-sm flex items-center justify-center transition-all duration-150 hover:text-text hover:border-border-2" onclick="App.closeModal()">✕</button>
       <div id="modal-content"></div>
     </div>
   </div>
 
   <!-- TOAST -->
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="fixed bottom-6 right-6 z-[200] bg-surface-3 text-text px-5 py-3 rounded-lg text-sm font-medium transition-all duration-250 pointer-events-none max-w-xs translate-y-5 opacity-0 border border-border-2"></div>
 
   <script src="/js/app.js"></script>
 </body>

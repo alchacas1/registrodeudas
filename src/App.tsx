@@ -108,15 +108,15 @@ function Home({ onCreateGroup }: { onCreateGroup: (name: string, type: GroupType
         <div className="absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-gradient-to-tr from-indigo-300/40 to-sky-300/40 blur-3xl" />
         <div className="absolute -bottom-48 right-0 h-[28rem] w-[28rem] rounded-full bg-gradient-to-tr from-violet-300/30 to-fuchsia-300/30 blur-3xl" />
       </div>
-      <div className="max-w-lg w-full">
+      <div className="max-w-lg w-full px-2 sm:px-0">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-extrabold tracking-tight mb-2 bg-gradient-to-r from-indigo-700 to-blue-700 bg-clip-text text-transparent">Registro de Deudas</h1>
-          <p className="text-gray-700">Gestiona tus deudas de forma simple y clara</p>
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-2 bg-gradient-to-r from-indigo-700 to-blue-700 bg-clip-text text-transparent">Registro de Deudas</h1>
+          <p className="text-sm sm:text-base text-gray-700">Gestiona tus deudas de forma simple y clara</p>
         </div>
 
         {/* Main Card */}
-        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-xl p-8 space-y-8 ring-1 ring-slate-200/60">
+        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-xl p-5 sm:p-8 space-y-6 sm:space-y-8 ring-1 ring-slate-200/60">
           {/* Create Group - Primary Action */}
           <div className="space-y-4">
             <div className="text-center">
@@ -307,34 +307,34 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
       <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6 relative">
         {/* HEADER */}
         <div className="rounded-2xl shadow-lg overflow-hidden ring-1 ring-slate-200/60">
-          <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-4 sm:px-6 sm:py-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={() => navigate('/')}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors self-start"
+                className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-white/10 px-2.5 py-1.5 sm:px-3 sm:py-2 text-white hover:bg-white/20 transition-colors self-start text-sm sm:text-base"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
                 <span className="font-semibold">Volver</span>
               </button>
 
               <div className="text-center">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">{group.name}</h1>
-                <div className="mt-2 inline-flex items-center justify-center rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white/90 capitalize">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{group.name}</h1>
+                <div className="mt-2 inline-flex items-center justify-center rounded-full bg-white/10 px-3 py-1 text-xs sm:text-sm font-semibold text-white/90 capitalize">
                   {group.type}
                 </div>
               </div>
 
               <div className="text-center sm:text-right">
-                <p className="text-sm text-white/80">Código de acceso</p>
+                <p className="text-xs sm:text-sm text-white/80">Código de acceso</p>
                 <button
                   onClick={() => navigator.clipboard.writeText(group.accessCode)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 font-mono text-lg font-semibold text-white hover:bg-white/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-white/10 px-2 py-1.5 sm:px-3 sm:py-2 font-mono text-base sm:text-lg font-semibold text-white hover:bg-white/20 transition-colors"
                   title="Copiar código"
                 >
                   {group.accessCode}
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1" />
                   </svg>
@@ -342,11 +342,11 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
               </div>
             </div>
           </div>
-          <div className="bg-white px-6 py-4">
+          <div className="bg-white px-4 py-3 sm:px-6 sm:py-4">
             {group.description?.trim() ? (
-              <p className="text-gray-600">{group.description}</p>
+              <p className="text-sm sm:text-base text-gray-600">{group.description}</p>
             ) : (
-              <p className="text-gray-500 text-sm">Sin descripción</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Sin descripción</p>
             )}
           </div>
         </div>
@@ -440,51 +440,51 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
           {/* CONTENT */}
           <div className="lg:col-span-2 space-y-6">
             {/* DEUDAS */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 ring-1 ring-slate-200/60">
-              <div className="flex items-center justify-between mb-6">
+              <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 ring-1 ring-slate-200/60">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-700" aria-hidden="true">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-xl bg-red-50 text-red-700" aria-hidden="true">
+                    <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                     </svg>
                   </span>
-                  <h2 className="text-2xl font-bold text-gray-900">Deudas Activas</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Deudas Activas</h2>
                 </div>
-                <span className="text-sm text-gray-500">{activeDebts.length} activas</span>
+                <span className="text-xs sm:text-sm text-gray-500">{activeDebts.length} activas</span>
               </div>
 
               {activeDebts.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">
-                  <p className="text-lg font-semibold text-gray-700">No hay deudas registradas</p>
-                  <p className="text-sm mt-1">Agrega una deuda para comenzar</p>
+                <div className="text-center py-8 sm:py-10 text-gray-500">
+                  <p className="text-base sm:text-lg font-semibold text-gray-700">No hay deudas registradas</p>
+                  <p className="text-xs sm:text-sm mt-1">Agrega una deuda para comenzar</p>
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div className="grid gap-2 sm:gap-3">
                   {activeDebts.map(d => {
                     const debtor = group.members.find(m => m.id === d.debtorId);
                     const lender = group.members.find(m => m.id === d.lenderId);
                     const symbol = currencySymbol(d.currency);
                     const remaining = d.amount - d.paidAmount;
                     return (
-                      <div key={d.id} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm border-l-4 border-l-red-400">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="font-semibold text-gray-900">
+                      <div key={d.id} className="bg-white rounded-xl p-3 sm:p-4 border border-slate-100 shadow-sm border-l-4 border-l-red-400">
+                        <div className="flex items-start justify-between gap-2 sm:gap-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-sm sm:text-base text-gray-900">
                               {debtor?.name} <span className="text-gray-400">a</span> {lender?.name}
                             </p>
                             {d.reason?.trim() ? (
-                              <p className="mt-1 text-sm text-gray-600">
+                              <p className="mt-1 text-xs sm:text-sm text-gray-600 truncate">
                                 <span className="font-medium text-gray-700">Motivo:</span> {d.reason}
                               </p>
                             ) : (
-                              <p className="mt-1 text-sm text-gray-400">Sin motivo</p>
+                              <p className="mt-1 text-xs sm:text-sm text-gray-400">Sin motivo</p>
                             )}
                           </div>
 
-                          <div className="text-right">
-                            <p className="text-2xl font-bold text-red-700">
-                              <span className="align-top text-sm font-semibold">{symbol}</span>
+                          <div className="text-right shrink-0">
+                            <p className="text-xl sm:text-2xl font-bold text-red-700">
+                              <span className="align-top text-xs sm:text-sm font-semibold">{symbol}</span>
                               <span className="ml-0.5">{remaining.toFixed(0)}</span>
                             </p>
                             <p className="text-xs text-gray-500">{d.currency}</p>
@@ -498,30 +498,30 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
             </div>
 
             {/* ESTADO DE SALDOS */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 ring-1 ring-slate-200/60">
-              <div className="flex items-center gap-2 mb-6">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700" aria-hidden="true">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 ring-1 ring-slate-200/60">
+              <div className="flex items-center gap-2 mb-4 sm:mb-6">
+                <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700" aria-hidden="true">
+                  <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 19V5m0 14h16" />
                   </svg>
                 </span>
-                <h2 className="text-2xl font-bold text-gray-900">Estado de Saldos</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Estado de Saldos</h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {summaries.map(s => (
-                  <div key={s.memberId} className="rounded-xl p-4 bg-gradient-to-br from-slate-50 to-white ring-1 ring-slate-200/60">
+                  <div key={s.memberId} className="rounded-xl p-3 sm:p-4 bg-gradient-to-br from-slate-50 to-white ring-1 ring-slate-200/60">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-10 h-10 rounded-full ${normalizeAvatarClass(group.members.find(m => m.id === s.memberId)?.avatar, s.memberName)}`}
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full ${normalizeAvatarClass(group.members.find(m => m.id === s.memberId)?.avatar, s.memberName)}`}
                       ></div>
                       <div className="min-w-0">
-                        <p className="text-lg font-semibold text-gray-900 truncate">{s.memberName}</p>
+                        <p className="text-base sm:text-lg font-semibold text-gray-900 truncate">{s.memberName}</p>
                         <p className="text-xs text-gray-500">Saldo neto</p>
                       </div>
 
                       <div className="ml-auto">
                         <span
-                          className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold ${
+                          className={`inline-flex items-center justify-center px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-bold ${
                             s.netBalance > 0
                               ? 'bg-green-100 text-green-800'
                               : s.netBalance < 0
@@ -534,12 +534,12 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-white rounded-lg p-2">
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                      <div className="bg-white rounded-lg p-1.5 sm:p-2">
                         <p className="text-gray-500">Debe</p>
                         <p className={`font-bold ${s.owes > 0 ? 'text-red-600' : 'text-gray-400'}`}>₡{s.owes.toFixed(0)}</p>
                       </div>
-                      <div className="bg-white rounded-lg p-2">
+                      <div className="bg-white rounded-lg p-1.5 sm:p-2">
                         <p className="text-gray-500">Le deben</p>
                         <p className={`font-bold ${s.isOwed > 0 ? 'text-green-600' : 'text-gray-400'}`}>₡{s.isOwed.toFixed(0)}</p>
                       </div>
@@ -552,8 +552,8 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
 
           {/* ACTIONS SIDEBAR */}
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-blue-500 ring-1 ring-slate-200/60">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Agregar Miembro</h3>
+            <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border-t-4 border-blue-500 ring-1 ring-slate-200/60">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Agregar Miembro</h3>
               <div className="space-y-3">
                 <input
                   value={memberName}
@@ -571,12 +571,12 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
               </div>
               <div className="mt-4 space-y-2">
                 <h4 className="font-semibold text-gray-700">Miembros actuales</h4>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                   {group.members.map(m => (
-                    <div key={m.id} className="rounded-xl bg-gradient-to-br from-slate-50 to-white ring-1 ring-slate-200/60 px-2 py-2">
+                    <div key={m.id} className="rounded-xl bg-gradient-to-br from-slate-50 to-white ring-1 ring-slate-200/60 px-2 py-1.5 sm:px-2 sm:py-2">
                       <div className="flex flex-col items-center justify-center gap-1">
-                        <div className={`w-7 h-7 rounded-full ${normalizeAvatarClass(m.avatar, m.name)}`}></div>
-                        <span className="text-xs font-semibold text-slate-700 truncate w-full text-center">{m.name}</span>
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full ${normalizeAvatarClass(m.avatar, m.name)}`}></div>
+                        <span className="text-[10px] sm:text-xs font-semibold text-slate-700 truncate w-full text-center">{m.name}</span>
                       </div>
                     </div>
                   ))}
@@ -584,13 +584,13 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-purple-500 ring-1 ring-slate-200/60">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Agregar Deuda</h3>
+            <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border-t-4 border-purple-500 ring-1 ring-slate-200/60">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Agregar Deuda</h3>
               <div className="space-y-3">
                 <select
                   value={debtDebtor}
                   onChange={e => setDebtDebtor(e.target.value)}
-                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl bg-white px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">¿Quién debe?</option>
                   {group.members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -598,7 +598,7 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
                 <select
                   value={debtLender}
                   onChange={e => setDebtLender(e.target.value)}
-                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl bg-white px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">¿A quién le deben?</option>
                   {group.members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -609,12 +609,12 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
                     value={debtAmount || ''}
                     onChange={e => setDebtAmount(Number(e.target.value))}
                     placeholder="Monto"
-                    className="flex-1 rounded-xl bg-white px-4 py-3 text-slate-900 ring-1 ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="flex-1 rounded-xl bg-white px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base text-slate-900 ring-1 ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <select
                     value={debtCurrency}
                     onChange={e => setDebtCurrency(e.target.value)}
-                    className="px-3 py-3 rounded-xl bg-white text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="px-2.5 sm:px-3 py-2.5 sm:py-3 rounded-xl bg-white text-sm sm:text-base text-slate-900 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="CRC">₡</option>
                     <option value="USD">$</option>
@@ -625,20 +625,20 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
                   value={debtReason}
                   onChange={e => setDebtReason(e.target.value)}
                   placeholder="¿Por qué? (opcional)"
-                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-900 ring-1 ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl bg-white px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base text-slate-900 ring-1 ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <button
                   onClick={addDebt}
                   disabled={!debtDebtor || !debtLender || debtAmount <= 0}
-                  className="w-full bg-gradient-to-r from-purple-600 to-violet-600 text-white py-3 rounded-lg hover:from-purple-700 hover:to-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold transition-colors"
+                  className="w-full bg-gradient-to-r from-purple-600 to-violet-600 text-white py-2.5 sm:py-3 rounded-lg hover:from-purple-700 hover:to-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold transition-colors text-sm sm:text-base"
                 >
                   + Agregar Gasto
                 </button>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-indigo-500 ring-1 ring-slate-200/60">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Buscar Deuda</h3>
+            <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border-t-4 border-indigo-500 ring-1 ring-slate-200/60">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Buscar Deuda</h3>
               <div className="space-y-3">
                 <select
                   value={searchDebtor}
@@ -677,49 +677,49 @@ function GroupPage({ groups, onUpdateGroup }: { groups: Record<string, Group>, o
 
         {/* TOTAL GENERAL */}
         <div
-          className={`mt-8 rounded-3xl shadow-xl p-8 border bg-gradient-to-br from-white to-slate-50 ${
+          className={`mt-6 sm:mt-8 rounded-2xl sm:rounded-3xl shadow-xl p-5 sm:p-8 border bg-gradient-to-br from-white to-slate-50 ${
             totalNet > 0 ? 'border-green-200' : totalNet < 0 ? 'border-red-200' : 'border-slate-200'
           }`}
         >
-          <div className="flex items-center justify-center gap-3 mb-4">
+          <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <div
-              className={`h-10 w-10 rounded-full flex items-center justify-center ${
+              className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center ${
                 totalNet > 0 ? 'bg-green-100 text-green-700' : totalNet < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700'
               }`}
               aria-hidden="true"
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 19V5m0 14h16M7 15l3-3 2 2 5-6" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">Total General</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Total General</h2>
           </div>
 
           <div className="text-center">
             <p
-              className={`text-6xl font-extrabold tracking-tighter ${
+              className={`text-4xl sm:text-6xl font-extrabold tracking-tighter break-all sm:break-normal ${
                 totalNet > 0 ? 'text-green-700' : totalNet < 0 ? 'text-red-700' : 'text-slate-700'
               }`}
             >
-              {totalNet < 0 ? <span className="align-top text-2xl font-bold mr-1">-</span> : null}
-              <span className="align-top text-2xl font-bold">₡</span>
+              {totalNet < 0 ? <span className="align-top text-lg sm:text-2xl font-bold mr-1">-</span> : null}
+              <span className="align-top text-lg sm:text-2xl font-bold">₡</span>
               <span className="ml-1">{Math.abs(totalNet).toFixed(0)}</span>
             </p>
-            <p className="text-gray-500 mt-1">Saldo Neto Total</p>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1">Saldo Neto Total</p>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-gray-50 p-4 border border-gray-100">
-              <p className="text-sm text-gray-600">Debes en total</p>
-              <p className="mt-1 text-2xl font-bold text-red-600">
-                <span className="align-top text-sm font-semibold">₡</span>
+          <div className="mt-4 sm:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="rounded-xl sm:rounded-2xl bg-gray-50 p-3 sm:p-4 border border-gray-100">
+              <p className="text-xs sm:text-sm text-gray-600">Debes en total</p>
+              <p className="mt-1 text-xl sm:text-2xl font-bold text-red-600">
+                <span className="align-top text-xs sm:text-sm font-semibold">₡</span>
                 <span className="ml-0.5">{totalOwes.toFixed(0)}</span>
               </p>
             </div>
-            <div className="rounded-2xl bg-gray-50 p-4 border border-gray-100">
-              <p className="text-sm text-gray-600">Te deben en total</p>
-              <p className="mt-1 text-2xl font-bold text-green-600">
-                <span className="align-top text-sm font-semibold">₡</span>
+            <div className="rounded-xl sm:rounded-2xl bg-gray-50 p-3 sm:p-4 border border-gray-100">
+              <p className="text-xs sm:text-sm text-gray-600">Te deben en total</p>
+              <p className="mt-1 text-xl sm:text-2xl font-bold text-green-600">
+                <span className="align-top text-xs sm:text-sm font-semibold">₡</span>
                 <span className="ml-0.5">{totalIsOwed.toFixed(0)}</span>
               </p>
             </div>
