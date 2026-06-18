@@ -8,3 +8,83 @@
 		height: 100%;
 	}
 }
+
+@layer components {
+	.group-dashboard-shell {
+		width: 100%;
+		max-width: 1280px;
+		margin: 0 auto;
+		padding: 24px 16px;
+	}
+
+	.group-dashboard-metrics {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 12px;
+		margin-bottom: 20px;
+	}
+
+	.group-dashboard-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 20px;
+		align-items: start;
+	}
+
+	.group-dashboard-sidebar {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.group-dashboard-row {
+		flex-direction: column;
+		align-items: stretch !important;
+	}
+
+	.group-dashboard-topbar {
+		min-height: 72px;
+		height: auto !important;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.group-dashboard-dialog-panel {
+		width: calc(100% - 2rem);
+		max-width: 448px;
+	}
+
+	@media (min-width: 640px) {
+		.group-dashboard-shell {
+			padding-left: 24px;
+			padding-right: 24px;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.group-dashboard-shell {
+			padding: 28px 32px;
+		}
+
+		.group-dashboard-metrics {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			gap: 16px;
+			margin-bottom: 24px;
+		}
+
+		.group-dashboard-layout {
+			grid-template-columns: minmax(0, 1fr) 360px;
+		}
+
+		.group-dashboard-sidebar {
+			position: sticky;
+			top: 96px;
+			align-self: start;
+		}
+
+		.group-dashboard-row {
+			flex-direction: row;
+			align-items: center !important;
+		}
+	}
+}
