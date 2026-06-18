@@ -624,7 +624,7 @@ function Home() {
           marginTop: 40,
         }}
       >
-        RegistroDeudass
+        RegistroDeudas
       </div>
     </div>
   );
@@ -764,7 +764,7 @@ function GroupPage() {
           fontSize: 13,
         }}
       >
-        RegistroDeudass
+        RegistroDeudas
       </div>
     </div>
   );
@@ -790,19 +790,25 @@ function GroupPage() {
   };
 
   const addMember = async () => {
-    if (!memberName.trim() || !memberEmail.trim() || addingMember) return;
+    const name = memberName.trim();
+    const email = memberEmail.trim();
+    if (!name || !email || addingMember) return;
     setAddingMember(true);
     setInviteMessage("");
     try {
       await dbAddMember(
         group.id,
-        memberName.trim(),
-        memberEmail.trim(),
+        name,
+        email,
         `${window.location.origin}/group/${group.id}`,
       );
       setMemberName("");
       setMemberEmail("");
-      setInviteMessage(`Invitación enviada a ${memberEmail.trim()}`);
+      setInviteMessage(
+        email === "*"
+          ? `${name} agregado sin correo`
+          : `Invitación enviada a ${email}`,
+      );
       await refetch();
     } catch (err) {
       console.error(err);
@@ -1436,8 +1442,7 @@ function GroupPage() {
                 <Input
                   value={memberEmail}
                   onChange={setMemberEmail}
-                  placeholder="Correo"
-                  type="email"
+                  placeholder="Correo o * para omitir"
                 />
                 <Btn
                   onClick={addMember}
@@ -1484,7 +1489,11 @@ function GroupPage() {
                           color: m.userId ? C.green : C.text3,
                         }}
                       >
-                        {m.userId ? "✓ activo" : "pendiente"}
+                        {m.userId
+                          ? "✓ activo"
+                          : m.email
+                            ? "pendiente"
+                            : "sin correo"}
                       </span>
                     </div>
                   ))}

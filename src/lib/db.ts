@@ -5,7 +5,7 @@ type MemberRow = {
   id: string;
   group_id: string;
   name: string;
-  email: string;
+  email: string | null;
   user_id: string | null;
   joined_at: string;
 };
@@ -80,6 +80,11 @@ function generateCode(length = 5): string {
   return result;
 }
 
+function normalizeMemberEmail(email: string): string | null {
+  const trimmed = email.trim();
+  return trimmed === "*" ? null : trimmed.toLowerCase();
+}
+
 /** Crea un grupo nuevo. Reintenta si el código de acceso generado choca. */
 export async function createGroup(
   name: string,
@@ -137,19 +142,22 @@ export async function addMember(
   email: string,
   redirectTo: string,
 ): Promise<Member> {
+  const normalizedEmail = normalizeMemberEmail(email);
   const { data, error } = await supabase
     .from("members")
-    .insert({ group_id: groupId, name, email: email.toLowerCase() })
+    .insert({ group_id: groupId, name, email: normalizedEmail })
     .select()
     .single();
   if (error) throw error;
 
-  // Si el correo ya tiene cuenta simplemente recibe un link para entrar;
-  // si no, Supabase Auth crea el usuario al verificar el link.
-  await supabase.auth.signInWithOtp({
-    email: email.toLowerCase(),
-    options: { emailRedirectTo: redirectTo },
-  });
+  if (normalizedEmail) {
+    // Si el correo ya tiene cuenta simplemente recibe un link para entrar;
+    // si no, Supabase Auth crea el usuario al verificar el link.
+    await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: { emailRedirectTo: redirectTo },
+    });
+  }
 
   return mapMember(data);
 }

@@ -5,7 +5,7 @@ export type DebtStatus = "pendiente" | "pagada" | "parcial";
 export interface Member {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   userId?: string; // se llena cuando el miembro entra con su magic link
   avatar: string; // initials-based color (legacy, ya no se usa para render)
   joinedAt: string;
