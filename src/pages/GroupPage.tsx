@@ -1,0 +1,1377 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import type { Debt, Group } from "../types";
+import { useCurrentUser, signOut } from "../lib/auth";
+import {
+  addDebt as dbAddDebt,
+  addMember as dbAddMember,
+  getFullGroup,
+  markDebtPaid as dbMarkDebtPaid,
+} from "../lib/db";
+import {
+  computeDebtBetween,
+  computeSummaries,
+  currencySymbol,
+  fmt,
+} from "../lib/utils";
+import { baseCard, C } from "../components/design";
+import { Avatar, Btn, Input, KpiCard, StyledSelect } from "../components/ui";
+
+// GROUP PAGE
+export function GroupPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useCurrentUser();
+
+  // undefined = cargando, null = no existe
+  const [group, setGroupState] = useState<Group | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState("");
+
+  const [memberName, setMemberName] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState("");
+
+  const [debtDebtor, setDebtDebtor] = useState("");
+  const [debtLender, setDebtLender] = useState("");
+  const [debtAmount, setDebtAmount] = useState("");
+  const [debtCurrency, setDebtCurrency] = useState("CRC");
+  const [debtReason, setDebtReason] = useState("");
+  const [addingDebt, setAddingDebt] = useState(false);
+
+  const [searchDebtor, setSearchDebtor] = useState("");
+  const [searchLender, setSearchLender] = useState("");
+  const [searchResult, setSearchResult] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"invite" | "search" | null>(
+    null,
+  );
+  const debtFormRef = useRef<HTMLDivElement | null>(null);
+  const dialogTriggerRef = useRef<HTMLElement | null>(null);
+
+  const refetch = async () => {
+    if (!id) return;
+    try {
+      const g = await getFullGroup(id);
+      setGroupState(g);
+    } catch (err) {
+      console.error(err);
+      setLoadError("No se pudo cargar el grupo.");
+      setGroupState(null);
+    }
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      if (!id) return;
+      try {
+        const g = await getFullGroup(id);
+        setGroupState(g);
+      } catch (err) {
+        console.error(err);
+        setLoadError("No se pudo cargar el grupo.");
+        setGroupState(null);
+      }
+    };
+    load();
+  }, [id]);
+
+  // Vuelve a cargar cuando se resuelve la sesión, así el botón de
+  // confirmar pago se habilita apenas el magic link vincula al usuario.
+  useEffect(() => {
+    const load = async () => {
+      if (user) {
+        if (!id) return;
+        try {
+          const g = await getFullGroup(id);
+          setGroupState(g);
+        } catch (err) {
+          console.error(err);
+          setLoadError("No se pudo cargar el grupo.");
+          setGroupState(null);
+        }
+      }
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!activeDialog) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !addingMember) {
+        setActiveDialog(null);
+        dialogTriggerRef.current?.focus();
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeDialog, addingMember]);
+
+  const pageStyle: CSSProperties = {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background: C.bg,
+    color: C.text,
+    fontFamily:
+      "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    WebkitFontSmoothing: "antialiased",
+  };
+
+  if (group === undefined) {
+    return (
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p style={{ color: C.text2 }}>Cargando…</p>
+      </div>
+    );
+  }
+
+  if (!group) {
+    return (
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <p style={{ color: C.text2, marginBottom: 20 }}>
+            {loadError || "Grupo no encontrado"}
+          </p>
+          <Btn
+            onClick={() => navigate("/")}
+            style={{ width: "auto", padding: "12px 28px" }}
+          >
+            Volver al inicio
+          </Btn>
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          borderTop: `1px solid ${C.border}`,
+          padding: "20px 24px",
+          textAlign: "center",
+          color: C.text3,
+          fontSize: 13,
+        }}
+      >
+        RegistroDeudas
+      </div>
+    </div>
+  );
+}
+
+  const summaries = computeSummaries(group);
+  const activeDebts = group.debts.filter((d) => d.status !== "pagada");
+  const totalOwes = summaries.reduce((s, x) => s + x.owes, 0);
+  const totalIsOwed = summaries.reduce((s, x) => s + x.isOwed, 0);
+  const totalNet = totalIsOwed - totalOwes;
+
+  const myMember = user
+    ? group.members.find((m) => m.userId === user.id)
+    : undefined;
+  const canConfirm = (d: Debt) =>
+    !!myMember && (myMember.id === d.debtorId || myMember.id === d.lenderId);
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(group.accessCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const addMember = async () => {
+    const name = memberName.trim();
+    const email = memberEmail.trim();
+    if (!name || !email || addingMember) return;
+    setAddingMember(true);
+    setInviteMessage("");
+    try {
+      await dbAddMember(
+        group.id,
+        name,
+        email,
+        `${window.location.origin}/group/${group.id}`,
+      );
+      setMemberName("");
+      setMemberEmail("");
+      setInviteMessage(
+        email === "*"
+          ? `${name} agregado sin correo`
+          : `Invitación enviada a ${email}`,
+      );
+      await refetch();
+    } catch (err) {
+      console.error(err);
+      setInviteMessage(
+        "No se pudo agregar el miembro (¿ese correo ya está en el grupo?).",
+      );
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const addDebt = async () => {
+    const amount = parseFloat(debtAmount);
+    if (
+      !debtDebtor ||
+      !debtLender ||
+      !amount ||
+      debtDebtor === debtLender ||
+      addingDebt
+    )
+      return;
+    setAddingDebt(true);
+    try {
+      await dbAddDebt(
+        group.id,
+        debtDebtor,
+        debtLender,
+        amount,
+        debtCurrency,
+        debtReason,
+      );
+      setDebtDebtor("");
+      setDebtLender("");
+      setDebtAmount("");
+      setDebtReason("");
+      await refetch();
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo registrar la deuda.");
+    } finally {
+      setAddingDebt(false);
+    }
+  };
+
+  const markPaid = async (debtId: string, amount: number) => {
+    setPayingId(debtId);
+    try {
+      await dbMarkDebtPaid(debtId, amount);
+      await refetch();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "No se pudo confirmar el pago.",
+      );
+    } finally {
+      setPayingId(null);
+    }
+  };
+
+  const doSearch = () => {
+    if (searchDebtor && searchLender)
+      setSearchResult(
+        computeDebtBetween(searchDebtor, searchLender, group.debts),
+      );
+  };
+
+  const openDialog = (
+    dialog: "invite" | "search",
+    trigger: HTMLElement | null,
+  ) => {
+    dialogTriggerRef.current = trigger;
+    setActiveDialog(dialog);
+  };
+
+  const closeDialog = () => {
+    if (addingMember) return;
+    setActiveDialog(null);
+    dialogTriggerRef.current?.focus();
+  };
+
+  const focusDebtForm = () => {
+    debtFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const firstControl = debtFormRef.current?.querySelector<
+      HTMLSelectElement | HTMLInputElement
+    >("select, input");
+    firstControl?.focus();
+  };
+
+  return (
+    <div style={pageStyle}>
+      {/* Topbar */}
+      <div
+        className="group-dashboard-topbar"
+        style={{
+          background: C.surface,
+          borderBottom: `1px solid ${C.border}`,
+          padding: "12px 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          height: 60,
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+        }}
+      >
+        <button
+          onClick={() => navigate("/")}
+          aria-label="Volver al inicio"
+          title="Volver"
+          style={{
+            background: "none",
+            border: "none",
+            color: C.text2,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 14,
+            fontFamily: "inherit",
+            fontWeight: 600,
+            padding: 0,
+          }}
+        >
+          <svg
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            viewBox="0 0 24 24"
+          >
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Volver
+        </button>
+
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 800,
+              color: C.text,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {group.name}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: C.text2,
+              textTransform: "capitalize",
+            }}
+          >
+            {group.type}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {user && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 11, color: C.text2 }}>
+                {myMember ? myMember.name : user.email}
+              </div>
+              <button
+                onClick={() => signOut()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: C.text3,
+                  fontSize: 10,
+                  cursor: "pointer",
+                  padding: 0,
+                  fontFamily: "inherit",
+                }}
+              >
+                Salir
+              </button>
+            </div>
+          )}
+          <button
+            onClick={copyCode}
+            aria-label="Copiar codigo del grupo"
+            title="Copiar codigo"
+            style={{
+              background: C.accentLo,
+              border: `1px solid rgba(124,109,250,0.3)`,
+              borderRadius: 10,
+              padding: "6px 14px",
+              color: C.accentHi,
+              fontFamily: "'SF Mono', 'Fira Code', monospace",
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: "0.16em",
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "✓ Copiado" : group.accessCode}
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="group-dashboard-shell">
+        {/* KPIs */}
+        <div
+          className="group-dashboard-metrics"
+          style={{
+            display: "grid",
+            gap: 14,
+            marginBottom: 26,
+          }}
+        >
+          <KpiCard
+            label="Miembros"
+            value={group.members.length}
+            accentColor={C.text3}
+          />
+          <KpiCard
+            label="Deudas activas"
+            value={activeDebts.length}
+            accentColor={C.yellow}
+          />
+          <KpiCard
+            label="Total pendiente"
+            value={`₡${fmt(totalOwes)}`}
+            accentColor={C.red}
+          />
+          <KpiCard
+            label="Saldo neto"
+            value={`${totalNet < 0 ? "-" : ""}₡${fmt(Math.abs(totalNet))}`}
+            accentColor={totalNet >= 0 ? C.green : C.red}
+          />
+        </div>
+
+        {/* Two-col layout */}
+        <div
+          className="group-dashboard-layout"
+          style={{
+            display: "grid",
+            gap: 20,
+            alignItems: "start",
+          }}
+        >
+          {/* Main column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Active debts */}
+            <div style={{ ...baseCard, padding: 24 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ fontSize: 17, fontWeight: 800 }}>
+                  Deudas Activas
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: C.text2,
+                    fontWeight: 600,
+                    background: C.surface,
+                    borderRadius: 20,
+                    padding: "3px 12px",
+                  }}
+                >
+                  {activeDebts.length}
+                </div>
+              </div>
+
+              {activeDebts.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "48px 0",
+                    color: C.text3,
+                  }}
+                >
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+                  <div
+                    style={{ fontWeight: 700, color: C.text2, marginBottom: 4 }}
+                  >
+                    Sin deudas pendientes
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    Todos los pagos están al día
+                  </div>
+                  <button
+                    type="button"
+                    onClick={focusDebtForm}
+                    style={{
+                      marginTop: 18,
+                      minHeight: 44,
+                      borderRadius: 12,
+                      border: "none",
+                      background: C.accent,
+                      color: "#fff",
+                      padding: "0 18px",
+                      fontFamily: "inherit",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Registrar primera deuda
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
+                  {activeDebts.map((d) => {
+                    const debtor = group.members.find(
+                      (m) => m.id === d.debtorId,
+                    );
+                    const lender = group.members.find(
+                      (m) => m.id === d.lenderId,
+                    );
+                    const sym = currencySymbol(d.currency);
+                    const rem = d.amount - d.paidAmount;
+                    return (
+                      <div
+                        key={d.id}
+                        style={{
+                          background: C.surface,
+                          border: `1px solid ${C.border}`,
+                          borderLeft: `3px solid ${C.red}`,
+                          borderRadius: 12,
+                          padding: "14px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 14,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {debtor && <Avatar name={debtor.name} size={30} />}
+                          <span style={{ color: C.text3, fontSize: 12 }}>
+                            →
+                          </span>
+                          {lender && <Avatar name={lender.name} size={30} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 14,
+                              color: C.text,
+                            }}
+                          >
+                            {debtor?.name}{" "}
+                            <span style={{ color: C.text3, fontWeight: 400 }}>
+                              debe a
+                            </span>{" "}
+                            {lender?.name}
+                          </div>
+                          {d.reason && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: C.text2,
+                                marginTop: 2,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {d.reason}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 20,
+                              fontWeight: 800,
+                              color: C.red,
+                              letterSpacing: "-0.02em",
+                            }}
+                          >
+                            {sym}
+                            {fmt(rem)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: C.text3,
+                              marginBottom: 6,
+                            }}
+                          >
+                            {d.currency}
+                          </div>
+                          {canConfirm(d) ? (
+                            <button
+                              onClick={() => markPaid(d.id, d.amount)}
+                              disabled={payingId === d.id}
+                              style={{
+                                background: C.greenLo,
+                                border: `1px solid rgba(74,222,128,0.25)`,
+                                borderRadius: 8,
+                                padding: "4px 12px",
+                                color: C.green,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor:
+                                  payingId === d.id ? "not-allowed" : "pointer",
+                                opacity: payingId === d.id ? 0.5 : 1,
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {payingId === d.id ? "…" : "Pagar ✓"}
+                            </button>
+                          ) : (
+                            <div
+                              style={{
+                                fontSize: 9,
+                                color: C.text3,
+                                maxWidth: 90,
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              Solo {debtor?.name} o {lender?.name} confirman
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Balances */}
+            <div style={{ ...baseCard, padding: 24 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 18 }}>
+                Estado de Saldos
+              </div>
+              <div
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 14,
+                  padding: 20,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: C.text2,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    marginBottom: 8,
+                  }}
+                >
+                  Saldo neto
+                </div>
+                <div
+                  style={{
+                    fontSize: 42,
+                    fontWeight: 900,
+                    color:
+                      totalNet > 0 ? C.green : totalNet < 0 ? C.red : C.text2,
+                    lineHeight: 1,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {totalNet < 0 ? "-" : ""}
+                  {currencySymbol("CRC")}
+                  {fmt(Math.abs(totalNet))}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 12,
+                    marginTop: 18,
+                  }}
+                >
+                  <div style={{ background: C.bg, borderRadius: 12, padding: 14 }}>
+                    <div style={{ color: C.text3, fontSize: 12, fontWeight: 700 }}>
+                      Debes
+                    </div>
+                    <div
+                      style={{
+                        color: C.red,
+                        fontSize: 20,
+                        fontWeight: 850,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {currencySymbol("CRC")}
+                      {fmt(totalOwes)}
+                    </div>
+                  </div>
+                  <div style={{ background: C.bg, borderRadius: 12, padding: 14 }}>
+                    <div style={{ color: C.text3, fontSize: 12, fontWeight: 700 }}>
+                      Te deben
+                    </div>
+                    <div
+                      style={{
+                        color: C.green,
+                        fontSize: 20,
+                        fontWeight: 850,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {currencySymbol("CRC")}
+                      {fmt(totalIsOwed)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "none",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {summaries.map((x) => (
+                  <div
+                    key={x.memberId}
+                    style={{
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 14,
+                      padding: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Avatar name={x.memberName} size={36} />
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {x.memberName}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 800,
+                            color:
+                              x.netBalance > 0
+                                ? C.green
+                                : x.netBalance < 0
+                                  ? C.red
+                                  : C.text2,
+                          }}
+                        >
+                          {x.netBalance > 0 ? "+" : ""}
+                          {fmt(x.netBalance)}
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: C.bg,
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: C.text3,
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            marginBottom: 3,
+                          }}
+                        >
+                          Debe
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: x.owes > 0 ? C.red : C.text3,
+                          }}
+                        >
+                          ₡{fmt(x.owes)}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          background: C.bg,
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: C.text3,
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            marginBottom: 3,
+                          }}
+                        >
+                          Le deben
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: x.isOwed > 0 ? C.green : C.text3,
+                          }}
+                        >
+                        ₡{fmt(x.isOwed)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Net total banner */}
+            <div
+              style={{
+                ...baseCard,
+                display: "none",
+                padding: "32px",
+                textAlign: "center",
+                borderColor:
+                  totalNet >= 0
+                    ? "rgba(74,222,128,0.2)"
+                    : "rgba(248,113,113,0.2)",
+                background: `linear-gradient(135deg, ${C.card}, ${totalNet >= 0 ? "rgba(74,222,128,0.05)" : "rgba(248,113,113,0.05)"})`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: C.text2,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  marginBottom: 10,
+                }}
+              >
+                Saldo Neto Total
+              </div>
+              <div
+                style={{
+                  fontSize: 56,
+                  fontWeight: 900,
+                  letterSpacing: "-0.05em",
+                  color: totalNet >= 0 ? C.green : C.red,
+                  lineHeight: 1,
+                }}
+              >
+                {totalNet < 0 ? "-" : ""}₡{fmt(Math.abs(totalNet))}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 40,
+                  marginTop: 24,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.text3,
+                      marginBottom: 4,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Debes
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: C.red }}>
+                    ₡{fmt(totalOwes)}
+                  </div>
+                </div>
+                <div style={{ width: 1, background: C.border }} />
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.text3,
+                      marginBottom: 4,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Te deben
+                  </div>
+                  <div
+                    style={{ fontSize: 22, fontWeight: 800, color: C.green }}
+                  >
+                    ₡{fmt(totalIsOwed)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div
+            className="group-dashboard-sidebar"
+            style={{ display: "flex", flexDirection: "column", gap: 16 }}
+          >
+            {/* Add member */}
+            <div style={{ ...baseCard, padding: 22, display: "none" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
+                Agregar Miembro
+              </div>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                <Input
+                  value={memberName}
+                  onChange={setMemberName}
+                  placeholder="Nombre"
+                />
+                <Input
+                  value={memberEmail}
+                  onChange={setMemberEmail}
+                  placeholder="Correo o * para omitir"
+                />
+                <Btn
+                  onClick={addMember}
+                  disabled={
+                    !memberName.trim() || !memberEmail.trim() || addingMember
+                  }
+                >
+                  {addingMember ? "Enviando…" : "+ Invitar"}
+                </Btn>
+                {inviteMessage && (
+                  <div style={{ fontSize: 12, color: C.text2 }}>
+                    {inviteMessage}
+                  </div>
+                )}
+              </div>
+              {group.members.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  {group.members.map((m, i) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "8px 0",
+                        borderTop: i > 0 ? `1px solid ${C.border}` : "none",
+                      }}
+                    >
+                      <Avatar name={m.name} size={26} />
+                      <span
+                        style={{
+                          fontSize: 13,
+                          color: C.text,
+                          fontWeight: 500,
+                          flex: 1,
+                        }}
+                      >
+                        {m.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: m.userId ? C.green : C.text3,
+                        }}
+                      >
+                        {m.userId
+                          ? "✓ activo"
+                          : m.email
+                            ? "pendiente"
+                            : "sin correo"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add debt */}
+            <div ref={debtFormRef} style={{ ...baseCard, padding: 22 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
+                Registrar Deuda
+              </div>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  ¿Quién debe?
+                </label>
+                <StyledSelect value={debtDebtor} onChange={setDebtDebtor}>
+                  <option value="">¿Quién debe?</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  ¿A quién le deben?
+                </label>
+                <StyledSelect value={debtLender} onChange={setDebtLender}>
+                  <option value="">¿A quién le deben?</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Monto
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Input
+                    value={debtAmount}
+                    onChange={setDebtAmount}
+                    placeholder="Monto"
+                    type="number"
+                    style={{ flex: 1 }}
+                  />
+                  <StyledSelect
+                    value={debtCurrency}
+                    onChange={setDebtCurrency}
+                    style={{
+                      width: 70,
+                      flex: "none",
+                      paddingRight: 12,
+                      backgroundImage: "none",
+                    }}
+                  >
+                    <option value="CRC">₡</option>
+                    <option value="USD">$</option>
+                    <option value="EUR">€</option>
+                  </StyledSelect>
+                </div>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Motivo opcional
+                </label>
+                <Input
+                  value={debtReason}
+                  onChange={setDebtReason}
+                  placeholder="Motivo (opcional)"
+                />
+                <Btn
+                  onClick={addDebt}
+                  disabled={
+                    !debtDebtor ||
+                    !debtLender ||
+                    !debtAmount ||
+                    debtDebtor === debtLender ||
+                    addingDebt
+                  }
+                >
+                  {addingDebt ? "Registrando…" : "+ Registrar"}
+                </Btn>
+              </div>
+            </div>
+
+            <div style={{ ...baseCard, padding: 16 }}>
+              <div style={{ display: "grid", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={(event) => openDialog("invite", event.currentTarget)}
+                  style={{
+                    minHeight: 44,
+                    borderRadius: 12,
+                    border: `1px solid ${C.border2}`,
+                    background: C.surface,
+                    color: C.text,
+                    fontFamily: "inherit",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Invitar miembro
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => openDialog("search", event.currentTarget)}
+                  style={{
+                    minHeight: 44,
+                    borderRadius: 12,
+                    border: `1px solid ${C.border2}`,
+                    background: "transparent",
+                    color: C.text,
+                    fontFamily: "inherit",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Buscar deuda
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div style={{ ...baseCard, padding: 22, display: "none" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
+                Buscar Deuda
+              </div>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                <StyledSelect value={searchDebtor} onChange={setSearchDebtor}>
+                  <option value="">Deudor</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <StyledSelect value={searchLender} onChange={setSearchLender}>
+                  <option value="">Prestamista</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <Btn
+                  onClick={doSearch}
+                  disabled={!searchDebtor || !searchLender}
+                  variant="secondary"
+                >
+                  Buscar
+                </Btn>
+                {searchResult !== null && (
+                  <div
+                    style={{
+                      background: searchResult > 0 ? C.redLo : C.greenLo,
+                      border: `1px solid ${searchResult > 0 ? "rgba(248,113,113,0.25)" : "rgba(74,222,128,0.25)"}`,
+                      borderRadius: 12,
+                      padding: "16px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: C.text2,
+                        marginBottom: 6,
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Deuda total
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 26,
+                        fontWeight: 900,
+                        color: searchResult > 0 ? C.red : C.green,
+                      }}
+                    >
+                      ₡{fmt(searchResult)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {activeDialog && (
+        <div
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDialog();
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.62)",
+            zIndex: 200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            className="group-dashboard-dialog-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`group-${activeDialog}-dialog-title`}
+            style={{
+              ...baseCard,
+              padding: 22,
+              maxHeight: "calc(100vh - 2rem)",
+              overflowY: "auto",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                id={`group-${activeDialog}-dialog-title`}
+                style={{ fontSize: 18, fontWeight: 850 }}
+              >
+                {activeDialog === "invite" ? "Invitar miembro" : "Buscar deuda"}
+              </div>
+              <button
+                type="button"
+                onClick={closeDialog}
+                aria-label="Cerrar dialogo"
+                title="Cerrar"
+                disabled={addingMember}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: `1px solid ${C.border2}`,
+                  background: C.surface,
+                  color: C.text2,
+                  cursor: addingMember ? "not-allowed" : "pointer",
+                  fontSize: 20,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {activeDialog === "invite" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Nombre
+                </label>
+                <Input
+                  value={memberName}
+                  onChange={setMemberName}
+                  placeholder="Nombre"
+                />
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Correo
+                </label>
+                <Input
+                  value={memberEmail}
+                  onChange={setMemberEmail}
+                  placeholder="Correo o * para omitir"
+                />
+                <Btn
+                  onClick={addMember}
+                  disabled={
+                    !memberName.trim() || !memberEmail.trim() || addingMember
+                  }
+                >
+                  {addingMember ? "Enviando..." : "Invitar"}
+                </Btn>
+                {inviteMessage && (
+                  <div style={{ fontSize: 13, color: C.text2 }}>
+                    {inviteMessage}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Deudor
+                </label>
+                <StyledSelect value={searchDebtor} onChange={setSearchDebtor}>
+                  <option value="">Deudor</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Prestamista
+                </label>
+                <StyledSelect value={searchLender} onChange={setSearchLender}>
+                  <option value="">Prestamista</option>
+                  {group.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <Btn
+                  onClick={doSearch}
+                  disabled={!searchDebtor || !searchLender}
+                  variant="secondary"
+                >
+                  Buscar
+                </Btn>
+                {searchResult !== null && (
+                  <div
+                    style={{
+                      background: searchResult > 0 ? C.redLo : C.greenLo,
+                      border: `1px solid ${searchResult > 0 ? "rgba(248,113,113,0.25)" : "rgba(74,222,128,0.25)"}`,
+                      borderRadius: 12,
+                      padding: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ color: C.text2, fontSize: 12 }}>
+                      Deuda total
+                    </div>
+                    <div
+                      style={{
+                        color: searchResult > 0 ? C.red : C.green,
+                        fontSize: 28,
+                        fontWeight: 900,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {currencySymbol("CRC")}
+                      {fmt(searchResult)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
