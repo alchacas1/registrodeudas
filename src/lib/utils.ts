@@ -40,6 +40,25 @@ export function computeDebtBetween(
     .reduce((sum, debt) => sum + (debt.amount - debt.paidAmount), 0);
 }
 
+export function buildSplitDebts(
+  totalAmount: number,
+  lenderId: string,
+  debtorIds: string[],
+  options: { excludeLender?: boolean } = {},
+): { debtorId: string; lenderId: string; amount: number }[] {
+  const uniqueDebtorIds = [...new Set(debtorIds)].filter(
+    (debtorId) => debtorId && debtorId !== lenderId,
+  );
+  if (!totalAmount || totalAmount <= 0 || !lenderId || uniqueDebtorIds.length === 0) {
+    return [];
+  }
+
+  const participantCount =
+    uniqueDebtorIds.length + (options.excludeLender ? 0 : 1);
+  const amount = totalAmount / participantCount;
+  return uniqueDebtorIds.map((debtorId) => ({ debtorId, lenderId, amount }));
+}
+
 const AVATAR_COLORS: [string, string][] = [
   ["#7c6dfa", "#4c3fd6"],
   ["#4ade80", "#22a85a"],

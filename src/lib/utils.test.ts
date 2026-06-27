@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Group } from "../types";
 import {
   avatarColors,
+  buildSplitDebts,
   computeDebtBetween,
   computeSummaries,
   currencySymbol,
@@ -109,6 +110,26 @@ describe("computeDebtBetween", () => {
   it("returns remaining unpaid debt for a debtor and lender pair", () => {
     expect(computeDebtBetween("ana", "luis", baseGroup.debts)).toBe(7500);
     expect(computeDebtBetween("luis", "ana", baseGroup.debts)).toBe(0);
+  });
+});
+
+describe("buildSplitDebts", () => {
+  it("includes the lender in the split by default without creating a self-debt", () => {
+    expect(buildSplitDebts(15000, "ana", ["luis", "maria"])).toEqual([
+      { debtorId: "luis", lenderId: "ana", amount: 5000 },
+      { debtorId: "maria", lenderId: "ana", amount: 5000 },
+    ]);
+  });
+
+  it("excludes the lender from the split when requested", () => {
+    expect(
+      buildSplitDebts(9000, "ana", ["ana", "luis", "maria"], {
+        excludeLender: true,
+      }),
+    ).toEqual([
+      { debtorId: "luis", lenderId: "ana", amount: 4500 },
+      { debtorId: "maria", lenderId: "ana", amount: 4500 },
+    ]);
   });
 });
 

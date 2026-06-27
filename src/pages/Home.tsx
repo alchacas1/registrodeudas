@@ -96,33 +96,19 @@ export function Home() {
         <div style={{ maxWidth: 420, width: "100%", position: "relative" }}>
           {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div
+          <img
+            src="/Icono.png"
+            alt=""
+            aria-hidden="true"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
               width: 60,
               height: 60,
               borderRadius: 18,
               marginBottom: 20,
-              background: `linear-gradient(135deg, ${C.accent}, #9f5ff7)`,
+              objectFit: "cover",
               boxShadow: `0 8px 32px rgba(124,109,250,0.35)`,
             }}
-          >
-            <svg
-              width="28"
-              height="28"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </div>
+          />
           <h1
             style={{
               fontSize: 30,

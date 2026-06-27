@@ -9,6 +9,7 @@ import {
   markDebtPaid as dbMarkDebtPaid,
 } from "../lib/db";
 import {
+  buildSplitDebts,
   computeDebtBetween,
   computeSummaries,
   currencySymbol,
@@ -39,14 +40,23 @@ export function GroupPage() {
   const [debtReason, setDebtReason] = useState("");
   const [addingDebt, setAddingDebt] = useState(false);
 
+  const [splitAmount, setSplitAmount] = useState("");
+  const [splitCurrency, setSplitCurrency] = useState("CRC");
+  const [splitLender, setSplitLender] = useState("");
+  const [splitExcludeLender, setSplitExcludeLender] = useState(false);
+  const [splitDebtors, setSplitDebtors] = useState<string[]>([]);
+  const [splitReason, setSplitReason] = useState("");
+  const [savingSplit, setSavingSplit] = useState(false);
+  const [splitError, setSplitError] = useState("");
+
   const [searchDebtor, setSearchDebtor] = useState("");
   const [searchLender, setSearchLender] = useState("");
   const [searchResult, setSearchResult] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"invite" | "search" | null>(
-    null,
-  );
+  const [activeDialog, setActiveDialog] = useState<
+    "invite" | "search" | "split" | null
+  >(null);
   const debtFormRef = useRef<HTMLDivElement | null>(null);
   const dialogTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -100,7 +110,7 @@ export function GroupPage() {
   useEffect(() => {
     if (!activeDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !addingMember) {
+      if (event.key === "Escape" && !addingMember && !savingSplit) {
         setActiveDialog(null);
         dialogTriggerRef.current?.focus();
       }
@@ -112,7 +122,7 @@ export function GroupPage() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeDialog, addingMember]);
+  }, [activeDialog, addingMember, savingSplit]);
 
   const pageStyle: CSSProperties = {
     minHeight: "100vh",
@@ -282,8 +292,73 @@ export function GroupPage() {
       );
   };
 
+  const splitTotal = parseFloat(splitAmount);
+  const splitItems = buildSplitDebts(splitTotal, splitLender, splitDebtors, {
+    excludeLender: splitExcludeLender,
+  });
+  const splitShare = splitItems[0]?.amount ?? 0;
+
+  const toggleSplitDebtor = (memberId: string) => {
+    setSplitDebtors((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId],
+    );
+  };
+
+  const resetSplitForm = () => {
+    setSplitAmount("");
+    setSplitCurrency("CRC");
+    setSplitLender("");
+    setSplitExcludeLender(false);
+    setSplitDebtors([]);
+    setSplitReason("");
+    setSplitError("");
+  };
+
+  const saveSplitBill = async () => {
+    setSplitError("");
+    if (savingSplit) return;
+    if (!splitLender) {
+      setSplitError("Selecciona quien pagó la cuenta.");
+      return;
+    }
+    if (!splitTotal || splitTotal <= 0) {
+      setSplitError("Digita un monto válido.");
+      return;
+    }
+    if (splitItems.length === 0) {
+      setSplitError("Selecciona al menos una persona deudora.");
+      return;
+    }
+
+    setSavingSplit(true);
+    try {
+      await Promise.all(
+        splitItems.map((item) =>
+          dbAddDebt(
+            group.id,
+            item.debtorId,
+            item.lenderId,
+            item.amount,
+            splitCurrency,
+            splitReason.trim() || "Cuenta dividida",
+          ),
+        ),
+      );
+      resetSplitForm();
+      setActiveDialog(null);
+      await refetch();
+    } catch (err) {
+      console.error(err);
+      setSplitError("No se pudo dividir la cuenta.");
+    } finally {
+      setSavingSplit(false);
+    }
+  };
+
   const openDialog = (
-    dialog: "invite" | "search",
+    dialog: "invite" | "search" | "split",
     trigger: HTMLElement | null,
   ) => {
     dialogTriggerRef.current = trigger;
@@ -291,7 +366,7 @@ export function GroupPage() {
   };
 
   const closeDialog = () => {
-    if (addingMember) return;
+    if (addingMember || savingSplit) return;
     setActiveDialog(null);
     dialogTriggerRef.current?.focus();
   };
@@ -1030,8 +1105,37 @@ export function GroupPage() {
 
             {/* Add debt */}
             <div ref={debtFormRef} style={{ ...baseCard, padding: 22 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
-                Registrar Deuda
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 800 }}>
+                  Registrar Deuda
+                </div>
+                <button
+                  type="button"
+                  onClick={(event) => openDialog("split", event.currentTarget)}
+                  style={{
+                    minHeight: 36,
+                    borderRadius: 10,
+                    border: `1px solid ${C.border2}`,
+                    background: C.surface,
+                    color: C.text,
+                    fontFamily: "inherit",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    padding: "0 12px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Dividir cuenta
+                </button>
               </div>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 10 }}
@@ -1254,14 +1358,18 @@ export function GroupPage() {
                 id={`group-${activeDialog}-dialog-title`}
                 style={{ fontSize: 18, fontWeight: 850 }}
               >
-                {activeDialog === "invite" ? "Invitar miembro" : "Buscar deuda"}
+                {activeDialog === "invite"
+                  ? "Invitar miembro"
+                  : activeDialog === "split"
+                    ? "Dividir cuenta"
+                    : "Buscar deuda"}
               </div>
               <button
                 type="button"
                 onClick={closeDialog}
                 aria-label="Cerrar dialogo"
                 title="Cerrar"
-                disabled={addingMember}
+                disabled={addingMember || savingSplit}
                 style={{
                   width: 40,
                   height: 40,
@@ -1269,7 +1377,7 @@ export function GroupPage() {
                   border: `1px solid ${C.border2}`,
                   background: C.surface,
                   color: C.text2,
-                  cursor: addingMember ? "not-allowed" : "pointer",
+                  cursor: addingMember || savingSplit ? "not-allowed" : "pointer",
                   fontSize: 20,
                   lineHeight: 1,
                 }}
@@ -1309,6 +1417,177 @@ export function GroupPage() {
                     {inviteMessage}
                   </div>
                 )}
+              </div>
+            ) : activeDialog === "split" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Monto total
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Input
+                    value={splitAmount}
+                    onChange={setSplitAmount}
+                    placeholder="Monto"
+                    type="number"
+                    style={{ flex: 1 }}
+                  />
+                  <StyledSelect
+                    value={splitCurrency}
+                    onChange={setSplitCurrency}
+                    style={{
+                      width: 78,
+                      flex: "none",
+                      paddingRight: 12,
+                      backgroundImage: "none",
+                    }}
+                  >
+                    <option value="CRC">₡</option>
+                    <option value="USD">$</option>
+                    <option value="EUR">€</option>
+                  </StyledSelect>
+                </div>
+
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Prestamista
+                </label>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <StyledSelect
+                    value={splitLender}
+                    onChange={(value) => {
+                      setSplitLender(value);
+                      setSplitDebtors((current) =>
+                        current.filter((debtorId) => debtorId !== value),
+                      );
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">¿Quién pagó?</option>
+                    {group.members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </StyledSelect>
+                  <label
+                    title="No contar al prestamista dentro de las partes de la cuenta"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      minHeight: 44,
+                      borderRadius: 10,
+                      border: `1px solid ${C.border2}`,
+                      background: splitExcludeLender ? C.accentLo : C.surface,
+                      color: C.text,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      padding: "0 10px",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={splitExcludeLender}
+                      onChange={(event) =>
+                        setSplitExcludeLender(event.target.checked)
+                      }
+                    />
+                    Excluir
+                  </label>
+                </div>
+
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Deudores
+                </label>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {group.members.map((member) => {
+                    const disabled = member.id === splitLender;
+                    const checked = splitDebtors.includes(member.id);
+                    return (
+                      <label
+                        key={member.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          minHeight: 42,
+                          borderRadius: 10,
+                          border: `1px solid ${checked ? C.accent : C.border2}`,
+                          background: checked ? C.accentLo : C.surface,
+                          color: disabled ? C.text3 : C.text,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                          padding: "0 12px",
+                          fontSize: 14,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleSplitDebtor(member.id)}
+                        />
+                        <Avatar name={member.name} size={26} />
+                        <span>{member.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  Motivo opcional
+                </label>
+                <Input
+                  value={splitReason}
+                  onChange={setSplitReason}
+                  placeholder="Ej. Cena, super, viaje"
+                />
+
+                {splitItems.length > 0 && (
+                  <div
+                    style={{
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 12,
+                      padding: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: C.text2,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        marginBottom: 6,
+                      }}
+                    >
+                      Cada persona deberá {currencySymbol(splitCurrency)}
+                      {fmt(splitShare)}
+                    </div>
+                    <div style={{ color: C.text3, fontSize: 12 }}>
+                      Se crearán {splitItems.length} deudas automáticamente.
+                      {splitExcludeLender
+                        ? " El prestamista está excluido del reparto."
+                        : " El prestamista cuenta como una parte."}
+                    </div>
+                  </div>
+                )}
+
+                {splitError && (
+                  <div style={{ color: C.red, fontSize: 13 }}>{splitError}</div>
+                )}
+
+                <Btn
+                  onClick={saveSplitBill}
+                  disabled={
+                    savingSplit ||
+                    !splitLender ||
+                    !splitAmount ||
+                    splitItems.length === 0
+                  }
+                >
+                  {savingSplit ? "Guardando..." : "Guardar división"}
+                </Btn>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
