@@ -4,6 +4,7 @@ import type { GroupType } from "../types";
 import { createGroup as dbCreateGroup, findGroupByCode } from "../lib/db";
 import { baseCard, baseInput, C } from "../components/design";
 import { Btn, Input, StyledSelect } from "../components/ui";
+import versionInfo from "../data/version.json";
 
 // HOME PAGE
 export function Home() {
@@ -272,7 +273,7 @@ export function Home() {
           marginTop: 40,
         }}
       >
-        RegistroDeudas
+        v{versionInfo.version}
       </div>
     </div>
   );
