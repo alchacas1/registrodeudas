@@ -17,6 +17,7 @@ import {
 } from "../lib/utils";
 import { baseCard, C } from "../components/design";
 import { Avatar, Btn, Input, KpiCard, StyledSelect } from "../components/ui";
+import versionInfo from "../data/version.json";
 
 // GROUP PAGE
 export function GroupPage() {
@@ -429,7 +430,7 @@ export function GroupPage() {
           Volver
         </button>
 
-        <div style={{ textAlign: "center" }}>
+        <div className="group-dashboard-topbar-title" style={{ textAlign: "center" }}>
           <div
             style={{
               fontSize: 16,
@@ -451,9 +452,12 @@ export function GroupPage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          className="group-dashboard-topbar-actions"
+          style={{ display: "flex", alignItems: "center", gap: 10 }}
+        >
           {user && (
-            <div style={{ textAlign: "right" }}>
+            <div className="group-dashboard-user" style={{ textAlign: "right" }}>
               <div style={{ fontSize: 11, color: C.text2 }}>
                 {myMember ? myMember.name : user.email}
               </div>
@@ -474,6 +478,7 @@ export function GroupPage() {
             </div>
           )}
           <button
+            className="group-dashboard-access-code"
             onClick={copyCode}
             aria-label="Copiar codigo del grupo"
             title="Copiar codigo"
@@ -617,6 +622,7 @@ export function GroupPage() {
                     const rem = d.amount - d.paidAmount;
                     return (
                       <div
+                        className="group-dashboard-debt-card"
                         key={d.id}
                         style={{
                           background: C.surface,
@@ -630,6 +636,7 @@ export function GroupPage() {
                         }}
                       >
                         <div
+                          className="group-dashboard-debt-people"
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -643,7 +650,10 @@ export function GroupPage() {
                           </span>
                           {lender && <Avatar name={lender.name} size={30} />}
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          className="group-dashboard-debt-body"
+                          style={{ flex: 1, minWidth: 0 }}
+                        >
                           <div
                             style={{
                               fontWeight: 700,
@@ -672,7 +682,10 @@ export function GroupPage() {
                             </div>
                           )}
                         </div>
-                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div
+                          className="group-dashboard-debt-amount"
+                          style={{ textAlign: "right", flexShrink: 0 }}
+                        >
                           <div
                             style={{
                               fontSize: 20,
@@ -772,6 +785,7 @@ export function GroupPage() {
                   {fmt(Math.abs(totalNet))}
                 </div>
                 <div
+                  className="group-dashboard-balance-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -1165,7 +1179,10 @@ export function GroupPage() {
                 <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Monto
                 </label>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div
+                  className="group-dashboard-control-row"
+                  style={{ display: "flex", gap: 8 }}
+                >
                   <Input
                     value={debtAmount}
                     onChange={setDebtAmount}
@@ -1316,6 +1333,7 @@ export function GroupPage() {
           </div>
         </div>
       </div>
+      <footer className="group-dashboard-mobile-footer">v{versionInfo.version}</footer>
       {activeDialog && (
         <div
           onMouseDown={(event) => {
@@ -1423,7 +1441,10 @@ export function GroupPage() {
                 <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Monto total
                 </label>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div
+                  className="group-dashboard-control-row"
+                  style={{ display: "flex", gap: 8 }}
+                >
                   <Input
                     value={splitAmount}
                     onChange={setSplitAmount}
@@ -1450,7 +1471,10 @@ export function GroupPage() {
                 <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Prestamista
                 </label>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div
+                  className="group-dashboard-split-lender-row"
+                  style={{ display: "flex", gap: 10, alignItems: "center" }}
+                >
                   <StyledSelect
                     value={splitLender}
                     onChange={(value) => {

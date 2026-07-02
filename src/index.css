@@ -3,9 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+
 	html,
 	body {
 		height: 100%;
+		margin: 0;
+		overflow-x: hidden;
+	}
+
+	button,
+	input,
+	select {
+		max-width: 100%;
+		min-width: 0;
 	}
 }
 
@@ -47,6 +62,92 @@
 		height: auto !important;
 		flex-wrap: wrap;
 		gap: 12px;
+		padding: 10px 14px !important;
+	}
+
+	.group-dashboard-topbar-title {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.group-dashboard-topbar-title > div:first-child {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.group-dashboard-topbar-actions {
+		flex: 1 1 100%;
+		justify-content: space-between;
+		min-width: 0;
+	}
+
+	.group-dashboard-user {
+		min-width: 0;
+		text-align: left !important;
+	}
+
+	.group-dashboard-user > div:first-child {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.group-dashboard-access-code {
+		flex: none;
+	}
+
+	.group-dashboard-debt-card {
+		align-items: stretch !important;
+		flex-direction: column;
+	}
+
+	.group-dashboard-debt-people {
+		align-self: flex-start;
+	}
+
+	.group-dashboard-debt-body {
+		width: 100%;
+	}
+
+	.group-dashboard-debt-body > div:first-child {
+		overflow-wrap: anywhere;
+	}
+
+	.group-dashboard-debt-amount {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+		justify-content: space-between;
+		text-align: left !important;
+		width: 100%;
+	}
+
+	.group-dashboard-debt-amount > div:first-child {
+		font-size: 18px !important;
+	}
+
+	.group-dashboard-debt-amount > div:nth-child(2) {
+		margin-bottom: 0 !important;
+	}
+
+	.group-dashboard-balance-grid {
+		grid-template-columns: minmax(0, 1fr) !important;
+	}
+
+	.group-dashboard-control-row,
+	.group-dashboard-split-lender-row {
+		align-items: stretch !important;
+	}
+
+	.group-dashboard-split-lender-row {
+		flex-direction: column;
+	}
+
+	.group-dashboard-split-lender-row > label {
+		justify-content: center;
+		width: 100%;
 	}
 
 	.group-dashboard-dialog-panel {
@@ -54,10 +155,72 @@
 		max-width: 448px;
 	}
 
+	.group-dashboard-mobile-footer {
+		border-top: 1px solid rgba(255,255,255,0.07);
+		color: #44445a;
+		display: block;
+		font-size: 13px;
+		margin-top: auto;
+		padding: 18px 16px 22px;
+		text-align: center;
+	}
+
 	@media (min-width: 640px) {
 		.group-dashboard-shell {
 			padding-left: 24px;
 			padding-right: 24px;
+		}
+
+		.group-dashboard-topbar {
+			padding: 12px 24px !important;
+		}
+
+		.group-dashboard-topbar-actions {
+			flex: 0 1 auto;
+			justify-content: flex-end;
+		}
+
+		.group-dashboard-user {
+			text-align: right !important;
+		}
+
+		.group-dashboard-debt-card {
+			align-items: center !important;
+			flex-direction: row;
+		}
+
+		.group-dashboard-debt-body {
+			width: auto;
+		}
+
+		.group-dashboard-debt-amount {
+			display: block;
+			text-align: right !important;
+			width: auto;
+		}
+
+		.group-dashboard-debt-amount > div:first-child {
+			font-size: 20px !important;
+		}
+
+		.group-dashboard-debt-amount > div:nth-child(2) {
+			margin-bottom: 6px !important;
+		}
+
+		.group-dashboard-balance-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		}
+
+		.group-dashboard-split-lender-row {
+			flex-direction: row;
+		}
+
+		.group-dashboard-split-lender-row > label {
+			width: auto;
+		}
+
+		.group-dashboard-mobile-footer {
+			display: none;
 		}
 	}
 
