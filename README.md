@@ -1,71 +1,36 @@
-# DeudaTrack
+# Registro de Deudas
 
-Aplicación web para gestionar deudas entre grupos de familia, amigos, conocidos y más.
+Aplicación React para administrar grupos, miembros y deudas. Usa Firebase Authentication con enlaces de correo y Cloud Firestore con reglas de acceso por membresía.
 
-## Características
+## Configuración
 
-- **Grupos** con tipos: Familia, Amigos, Conocidos, Otros
-- **Código de acceso** único por grupo para compartir
-- **Miembros** con avatares con colores únicos generados automáticamente
-- **Deudas**: deudor → prestamista, monto, motivo, fecha
-- **Monedas**: CRC (₡), USD ($), EUR (€)
-- **Pagos parciales** con barra de progreso
-- **Resumen de balance** neto por miembro con gráfico de barras
-- **Filtros** por estado y miembro
+1. En Firebase Console, crea Firestore en modo producción.
+2. En Authentication, habilita Email/Password y Email link.
+3. Agrega `localhost` y el dominio de Vercel a Authorized domains.
+4. Instala dependencias con `npm install`.
+5. Configura `.env` con las variables públicas `VITE_FIREBASE_*`.
 
-## Requisitos
+La configuración web de Firebase no es un secreto. La protección de los datos depende de `firestore.rules`.
 
-- Node.js 18+
-- npm
-
-## Instalación
-
-```bash
-npm install
-```
-
-## Desarrollo
+## Desarrollo y verificación
 
 ```bash
 npm run dev
+npm test
+npm run test:rules
+npm run lint
+npm run build
 ```
 
-Abre http://localhost:3000
-
-## Producción
+Para desplegar reglas e índices en el proyecto configurado con Firebase CLI:
 
 ```bash
-npm run build
-npm start
+npx firebase use controldeudas-d106f
+npx firebase deploy --only firestore
 ```
 
-## Estructura del proyecto
+La aplicación continúa desplegándose en Vercel.
 
-```
-deudas-app/
-├── src/
-│   ├── index.ts       # Servidor Express
-│   ├── routes.ts      # API REST
-│   ├── store.ts       # Persistencia de datos
-│   └── types.ts       # Interfaces TypeScript
-├── public/
-│   ├── index.html     # SPA frontend
-│   ├── css/style.css  # Estilos
-│   └── js/app.js      # Lógica frontend
-├── tsconfig.json
-└── package.json
-```
+## Actualizar versión remota
 
-## API Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | /api/groups | Crear grupo |
-| GET | /api/groups | Listar grupos |
-| GET | /api/groups/:id | Obtener grupo con balances |
-| POST | /api/groups/join | Unirse por código |
-| POST | /api/groups/:id/members | Agregar miembro |
-| DELETE | /api/groups/:id/members/:memberId | Eliminar miembro |
-| POST | /api/groups/:id/debts | Registrar deuda |
-| PATCH | /api/groups/:id/debts/:debtId | Actualizar pago |
-| DELETE | /api/groups/:id/debts/:debtId | Eliminar deuda |
+`npm run update` sincroniza `src/data/version.json` con `appMetadata/current`. Requiere un archivo local y no versionado `firebaseServiceAccount.json` descargado desde Firebase/Google Cloud. Nunca expongas esa cuenta de servicio en el frontend.

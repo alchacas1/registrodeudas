@@ -1,61 +1,12 @@
 import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import type { User } from "firebase/auth";
+import { isSignInWithEmailLink, onAuthStateChanged, sendSignInLinkToEmail, signInWithEmailLink, signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "./firebase";
+import { EMAIL_STORAGE_KEY, getEmailForLink, normalizeEmail } from "./auth-helpers";
+import { claimPendingMemberships } from "./db";
 
-/** Envía un magic link de inicio de sesión a un correo. */
-export async function sendMagicLink(email: string, redirectTo: string) {
-  return supabase.auth.signInWithOtp({
-    email: email.toLowerCase(),
-    options: { emailRedirectTo: redirectTo },
-  });
-}
-
-export async function signOut() {
-  return supabase.auth.signOut();
-}
-
-/**
- * Vincula cualquier fila de `members` cuyo email coincida con el usuario
- * recién autenticado (user_id todavía null). Se apoya en la política RLS
- * "members link own user_id", que solo permite este update cuando
- * auth.email() = members.email.
- */
-export async function linkPendingMemberships(user: User) {
-  if (!user.email) return;
-  await supabase
-    .from("members")
-    .update({ user_id: user.id })
-    .eq("email", user.email.toLowerCase())
-    .is("user_id", null);
-}
-
-/** Hook con el usuario autenticado actual (o null), y si todavía está cargando. */
-export function useCurrentUser() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      const sessionUser = data.session?.user ?? null;
-      setUser(sessionUser);
-      setLoading(false);
-      if (sessionUser) void linkPendingMemberships(sessionUser);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const sessionUser = session?.user ?? null;
-      setUser(sessionUser);
-      if (sessionUser) void linkPendingMemberships(sessionUser);
-    });
-
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  return { user, loading };
-}
+export async function sendMagicLink(email: string, redirectTo: string) { const normalized = normalizeEmail(email); await sendSignInLinkToEmail(auth, normalized, { url: redirectTo, handleCodeInApp: true }); localStorage.setItem(EMAIL_STORAGE_KEY, normalized); }
+export function isMagicLink(url = window.location.href) { return isSignInWithEmailLink(auth, url); }
+export async function completeEmailLink(url: string, suppliedEmail?: string) { const email = getEmailForLink(localStorage.getItem(EMAIL_STORAGE_KEY), suppliedEmail); if (!email) return null; const result = await signInWithEmailLink(auth, email, url); localStorage.removeItem(EMAIL_STORAGE_KEY); await claimPendingMemberships(result.user); return result.user; }
+export async function signOut() { await firebaseSignOut(auth); }
+export function useCurrentUser() { const [user, setUser] = useState<User | null>(null), [loading, setLoading] = useState(true); useEffect(() => onAuthStateChanged(auth, (next) => { setUser(next); setLoading(false); if (next) void claimPendingMemberships(next); }), []); return { user, loading }; }

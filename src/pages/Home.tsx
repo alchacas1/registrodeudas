@@ -11,6 +11,7 @@ export function Home() {
   const [name, setName] = useState("");
   const [type, setType] = useState<GroupType>("amigos");
   const [description, setDescription] = useState("");
+  const [creatorName, setCreatorName] = useState("");
   const [code, setCode] = useState("");
   const [showDesc, setShowDesc] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -19,12 +20,13 @@ export function Home() {
   const navigate = useNavigate();
 
   const handleCreate = async () => {
-    if (!name.trim() || creating) return;
+    if (!name.trim() || !creatorName.trim() || creating) return;
     setCreating(true);
     try {
       const group = await dbCreateGroup(
         name.trim(),
         type,
+        creatorName.trim(),
         description.trim() || undefined,
       );
       navigate(`/group/${group.id}`);
@@ -152,6 +154,11 @@ export function Home() {
               onChange={setName}
               placeholder="Nombre del grupo"
             />
+            <Input
+              value={creatorName}
+              onChange={setCreatorName}
+              placeholder="Tu nombre en el grupo"
+            />
             <StyledSelect
               value={type}
               onChange={(v) => setType(v as GroupType)}
@@ -186,7 +193,7 @@ export function Home() {
             )}
             <Btn
               onClick={handleCreate}
-              disabled={!name.trim() || creating}
+              disabled={!name.trim() || !creatorName.trim() || creating}
               style={{ marginTop: 4 }}
             >
               {creating ? "Creando…" : "Crear Grupo →"}

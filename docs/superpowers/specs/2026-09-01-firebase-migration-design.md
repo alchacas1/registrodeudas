@@ -39,7 +39,6 @@ groups/{groupId}
   description: string | null
   accessCode: string
   ownerId: string
-  memberUserIds: string[]
   createdAt: Timestamp
 
 groups/{groupId}/members/{memberId}
@@ -47,6 +46,10 @@ groups/{groupId}/members/{memberId}
   email: string
   userId: string | null
   joinedAt: Timestamp
+
+groups/{groupId}/userMemberships/{firebaseUid}
+  memberId: string
+  email: string
 
 groups/{groupId}/debts/{debtId}
   debtorId: string
@@ -69,19 +72,19 @@ appMetadata/current
   updatedAt: Timestamp
 ```
 
-`memberUserIds` is a denormalized authorization field. It lets Firestore Security Rules determine group membership without relying on collection queries. It is updated atomically when a pending member is linked.
+`userMemberships` is the authorization index. Its document ID is the Firebase UID, so Security Rules can verify membership with an exact document lookup. It is created atomically with the matching member link and cannot be self-assigned without a verified pending invitation.
 
-Access codes use characters that avoid visually ambiguous values. Group creation reserves the code and creates the group and creator member in one transaction. A collision causes generation of another code. Joining looks up `accessCodes/{code}` and succeeds only when the authenticated user's email matches a pending member in the referenced group. The membership-link transaction then adds the UID to `memberUserIds`.
+Access codes use characters that avoid visually ambiguous values. Group creation reserves the code and creates the group, creator member, and creator authorization document in one transaction. A collision causes generation of another code. Joining looks up `accessCodes/{code}` and succeeds only when the authenticated user's email matches a pending member in the referenced group. The membership-link transaction then creates `userMemberships/{uid}`.
 
 ## Authorization Rules
 
 Firestore denies access by default.
 
-- Authenticated users may create a group only when `ownerId` is their UID and `memberUserIds` initially contains only their UID.
-- Only UIDs listed in `memberUserIds` may read a group, its members, or its debts.
+- Authenticated users may create a group only when `ownerId` is their UID and the same transaction creates their matching `userMemberships/{uid}` document.
+- Only UIDs with a `userMemberships/{uid}` document may read a group, its members, or its debts.
 - Group members may create pending member records and debts.
 - Member records with an assigned `userId` cannot be reassigned by clients.
-- A signed-in user may claim a pending member only when the token contains a verified email matching the normalized member email. The same atomic operation adds the UID to the parent group's `memberUserIds`.
+- A signed-in user may claim a pending member only when the token contains a verified email matching the normalized member email. The same atomic operation creates the corresponding `userMemberships/{uid}` document.
 - Only the group's owner may change group metadata or remove members. Member removal is not currently exposed in the UI.
 - A debt can be marked paid only when the caller's linked member document is the debt's debtor or lender. Immutable debt identity and amount fields cannot change during payment confirmation.
 - Access-code documents can only be created as part of valid group creation and cannot be listed. Authenticated clients may fetch an exact code document.

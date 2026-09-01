@@ -41,6 +41,7 @@ export function Input({
   type = "text",
   maxLength,
   style,
+  id,
 }: {
   value: string | number;
   onChange: (v: string) => void;
@@ -48,10 +49,12 @@ export function Input({
   type?: string;
   maxLength?: number;
   style?: CSSProperties;
+  id?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <input
+      id={id}
       type={type}
       value={value === 0 ? "" : value}
       onChange={(e) => onChange(e.target.value)}

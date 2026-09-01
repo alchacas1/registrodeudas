@@ -197,7 +197,7 @@ export function GroupPage() {
   const totalNet = totalIsOwed - totalOwes;
 
   const myMember = user
-    ? group.members.find((m) => m.userId === user.id)
+    ? group.members.find((m) => m.userId === user.uid)
     : undefined;
   const canConfirm = (d: Debt) =>
     !!myMember && (myMember.id === d.debtorId || myMember.id === d.lenderId);
@@ -223,11 +223,7 @@ export function GroupPage() {
       );
       setMemberName("");
       setMemberEmail("");
-      setInviteMessage(
-        email === "*"
-          ? `${name} agregado sin correo`
-          : `Invitación enviada a ${email}`,
-      );
+      setInviteMessage(`Invitación enviada a ${email}`);
       await refetch();
     } catch (err) {
       console.error(err);
@@ -275,7 +271,7 @@ export function GroupPage() {
   const markPaid = async (debtId: string, amount: number) => {
     setPayingId(debtId);
     try {
-      await dbMarkDebtPaid(debtId, amount);
+      await dbMarkDebtPaid(group.id, debtId, amount);
       await refetch();
     } catch (err) {
       alert(
@@ -1058,7 +1054,7 @@ export function GroupPage() {
                 <Input
                   value={memberEmail}
                   onChange={setMemberEmail}
-                  placeholder="Correo o * para omitir"
+                  placeholder="Correo del miembro"
                 />
                 <Btn
                   onClick={addMember}
@@ -1420,7 +1416,7 @@ export function GroupPage() {
                 <Input
                   value={memberEmail}
                   onChange={setMemberEmail}
-                  placeholder="Correo o * para omitir"
+                  placeholder="Correo del miembro"
                 />
                 <Btn
                   onClick={addMember}

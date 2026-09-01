@@ -1,210 +1,53 @@
-import { supabase } from "./supabase";
-import type { Group, Member, Debt, GroupType, DebtStatus } from "../types";
+import type { User } from "firebase/auth";
+import { sendSignInLinkToEmail } from "firebase/auth";
+import { addDoc, collection, collectionGroup, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { auth, firestore } from "./firebase";
+import { EMAIL_STORAGE_KEY, normalizeEmail } from "./auth-helpers";
+import { generateAccessCode, timestampToIso } from "./db-helpers";
+import type { Debt, DebtStatus, Group, GroupType, Member } from "../types";
 
-type MemberRow = {
-  id: string;
-  group_id: string;
-  name: string;
-  email: string | null;
-  user_id: string | null;
-  joined_at: string;
-};
+type Data = Record<string, unknown>;
+function requireUser(): User { const user = auth.currentUser; if (!user) throw new Error("Debes iniciar sesión."); return user; }
+function mapMember(id: string, row: Data): Member { return { id, name: String(row.name), email: row.email ? String(row.email) : null, userId: row.userId ? String(row.userId) : undefined, avatar: "", joinedAt: timestampToIso(row.joinedAt as never) }; }
+function mapDebt(id: string, row: Data): Debt { return { id, debtorId: String(row.debtorId), lenderId: String(row.lenderId), amount: Number(row.amount), currency: String(row.currency), reason: String(row.reason ?? ""), date: String(row.date ?? timestampToIso(row.createdAt as never).slice(0, 10)), status: String(row.status) as DebtStatus, paidAmount: Number(row.paidAmount ?? 0), createdAt: timestampToIso(row.createdAt as never) }; }
 
-type DebtRow = {
-  id: string;
-  group_id: string;
-  debtor_id: string;
-  lender_id: string;
-  amount: number;
-  currency: string;
-  reason: string | null;
-  date: string;
-  status: DebtStatus;
-  paid_amount: number;
-  created_at: string;
-};
-
-type GroupRow = {
-  id: string;
-  name: string;
-  type: GroupType;
-  description: string | null;
-  access_code: string;
-  created_at: string;
-};
-
-function mapMember(row: MemberRow): Member {
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    userId: row.user_id ?? undefined,
-    avatar: "",
-    joinedAt: row.joined_at,
-  };
-}
-
-function mapDebt(row: DebtRow): Debt {
-  return {
-    id: row.id,
-    debtorId: row.debtor_id,
-    lenderId: row.lender_id,
-    amount: Number(row.amount),
-    currency: row.currency,
-    reason: row.reason ?? "",
-    date: row.date,
-    status: row.status,
-    paidAmount: Number(row.paid_amount),
-    createdAt: row.created_at,
-  };
-}
-
-function mapGroup(row: GroupRow, members: Member[], debts: Debt[]): Group {
-  return {
-    id: row.id,
-    name: row.name,
-    type: row.type,
-    description: row.description ?? undefined,
-    members,
-    debts,
-    createdAt: row.created_at,
-    accessCode: row.access_code,
-  };
-}
-
-function generateCode(length = 5): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
-  const values = crypto.getRandomValues(new Uint8Array(length));
-  for (let i = 0; i < length; i++) result += chars[values[i] % chars.length];
-  return result;
-}
-
-function normalizeMemberEmail(email: string): string | null {
-  const trimmed = email.trim();
-  return trimmed === "*" ? null : trimmed.toLowerCase();
-}
-
-/** Crea un grupo nuevo. Reintenta si el código de acceso generado choca. */
-export async function createGroup(
-  name: string,
-  type: GroupType,
-  description?: string,
-): Promise<Group> {
+export async function createGroup(name: string, type: GroupType, creatorName: string, description?: string): Promise<Group> {
+  const user = requireUser(); if (!user.email) throw new Error("Tu cuenta no tiene un correo disponible.");
   for (let attempt = 0; attempt < 5; attempt++) {
-    const accessCode = generateCode();
-    const { data, error } = await supabase
-      .from("groups")
-      .insert({ name, type, description, access_code: accessCode })
-      .select()
-      .single();
-
-    if (!error && data) return mapGroup(data, [], []);
-    if (error && error.code !== "23505") throw error; // no es duplicado de código
+    const accessCode = generateAccessCode(), groupRef = doc(collection(firestore, "groups")), codeRef = doc(firestore, "accessCodes", accessCode), memberRef = doc(collection(groupRef, "members")), membershipRef = doc(groupRef, "userMemberships", user.uid);
+    try {
+      await runTransaction(firestore, async (tx) => {
+        if ((await tx.get(codeRef)).exists()) throw new Error("ACCESS_CODE_COLLISION");
+        tx.set(groupRef, { name, type, description: description ?? null, accessCode, ownerId: user.uid, createdAt: serverTimestamp() });
+        tx.set(memberRef, { name: creatorName, email: normalizeEmail(user.email!), userId: user.uid, joinedAt: serverTimestamp() });
+        tx.set(membershipRef, { memberId: memberRef.id, email: normalizeEmail(user.email!) });
+        tx.set(codeRef, { groupId: groupRef.id, createdBy: user.uid, createdAt: serverTimestamp() });
+      });
+      return { id: groupRef.id, ownerId: user.uid, name, type, description, members: [], debts: [], createdAt: new Date().toISOString(), accessCode };
+    } catch (error) { if (!(error instanceof Error) || error.message !== "ACCESS_CODE_COLLISION") throw error; }
   }
   throw new Error("No se pudo generar un código de acceso único.");
 }
-
-export async function findGroupByCode(
-  code: string,
-): Promise<{ id: string } | null> {
-  const { data, error } = await supabase
-    .from("groups")
-    .select("id")
-    .eq("access_code", code.toUpperCase())
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
-/** Trae un grupo completo con sus miembros y deudas. */
+export async function findGroupByCode(code: string): Promise<{ id: string } | null> { const user = requireUser(); const snap = await getDoc(doc(firestore, "accessCodes", code.trim().toUpperCase())); if (!snap.exists()) return null; await claimPendingMemberships(user); return { id: String(snap.data().groupId) }; }
 export async function getFullGroup(id: string): Promise<Group | null> {
-  const [groupRes, memberRes, debtRes] = await Promise.all([
-    supabase.from("groups").select("*").eq("id", id).maybeSingle(),
-    supabase.from("members").select("*").eq("group_id", id).order("joined_at"),
-    supabase.from("debts").select("*").eq("group_id", id).order("created_at"),
-  ]);
-
-  if (groupRes.error) throw groupRes.error;
-  if (!groupRes.data) return null;
-  if (memberRes.error) throw memberRes.error;
-  if (debtRes.error) throw debtRes.error;
-
-  const members = (memberRes.data ?? []).map(mapMember);
-  const debts = (debtRes.data ?? []).map(mapDebt);
-  return mapGroup(groupRes.data, members, debts);
+  requireUser(); const groupRef = doc(firestore, "groups", id);
+  const [groupSnap, membersSnap, debtsSnap] = await Promise.all([getDoc(groupRef), getDocs(collection(groupRef, "members")), getDocs(collection(groupRef, "debts"))]);
+  if (!groupSnap.exists()) return null; const row = groupSnap.data();
+  return { id, ownerId: String(row.ownerId), name: String(row.name), type: String(row.type) as GroupType, description: row.description ? String(row.description) : undefined, accessCode: String(row.accessCode), createdAt: timestampToIso(row.createdAt), members: membersSnap.docs.map((item) => mapMember(item.id, item.data())), debts: debtsSnap.docs.map((item) => mapDebt(item.id, item.data())).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
 }
-
-/** Agrega un miembro y le envía un magic link a su correo. */
-export async function addMember(
-  groupId: string,
-  name: string,
-  email: string,
-  redirectTo: string,
-): Promise<Member> {
-  const normalizedEmail = normalizeMemberEmail(email);
-  const { data, error } = await supabase
-    .from("members")
-    .insert({ group_id: groupId, name, email: normalizedEmail })
-    .select()
-    .single();
-  if (error) throw error;
-
-  if (normalizedEmail) {
-    // Si el correo ya tiene cuenta simplemente recibe un link para entrar;
-    // si no, Supabase Auth crea el usuario al verificar el link.
-    await supabase.auth.signInWithOtp({
-      email: normalizedEmail,
-      options: { emailRedirectTo: redirectTo },
-    });
-  }
-
-  return mapMember(data);
+export async function addMember(groupId: string, name: string, email: string, redirectTo: string): Promise<Member> {
+  requireUser(); const normalized = normalizeEmail(email);
+  const ref = await addDoc(collection(firestore, "groups", groupId, "members"), { name, email: normalized, userId: null, joinedAt: serverTimestamp() });
+  await sendSignInLinkToEmail(auth, normalized, { url: redirectTo, handleCodeInApp: true }); localStorage.setItem(EMAIL_STORAGE_KEY, normalized);
+  return { id: ref.id, name, email: normalized, avatar: "", joinedAt: new Date().toISOString() };
 }
-
-export async function addDebt(
-  groupId: string,
-  debtorId: string,
-  lenderId: string,
-  amount: number,
-  currency: string,
-  reason: string,
-): Promise<Debt> {
-  const { data, error } = await supabase
-    .from("debts")
-    .insert({
-      group_id: groupId,
-      debtor_id: debtorId,
-      lender_id: lenderId,
-      amount,
-      currency,
-      reason,
-      status: "pendiente",
-      paid_amount: 0,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return mapDebt(data);
+export async function addDebt(groupId: string, debtorId: string, lenderId: string, amount: number, currency: string, reason: string): Promise<Debt> {
+  requireUser(); const createdAt = new Date().toISOString(); const stored = { debtorId, lenderId, amount, currency, reason, date: createdAt.slice(0, 10), status: "pendiente" as const, paidAmount: 0, createdAt: serverTimestamp() };
+  const ref = await addDoc(collection(firestore, "groups", groupId, "debts"), stored); return { id: ref.id, debtorId, lenderId, amount, currency, reason, date: createdAt.slice(0, 10), status: "pendiente", paidAmount: 0, createdAt };
 }
-
-/**
- * Marca una deuda como pagada. La política RLS solo deja pasar el update
- * si el usuario autenticado es el deudor o el prestamista de esa deuda;
- * si no tiene permiso, no se actualiza ninguna fila y lanzamos un error.
- */
-export async function markDebtPaid(debtId: string, amount: number): Promise<Debt> {
-  const { data, error } = await supabase
-    .from("debts")
-    .update({ status: "pagada", paid_amount: amount })
-    .eq("id", debtId)
-    .select()
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) {
-    throw new Error(
-      "No tenés permiso para confirmar esta deuda (solo el deudor o quien prestó pueden hacerlo, y debés haber iniciado sesión con tu correo).",
-    );
-  }
-  return mapDebt(data);
+export async function markDebtPaid(groupId: string, debtId: string, amount: number): Promise<Debt> { requireUser(); const ref = doc(firestore, "groups", groupId, "debts", debtId); await updateDoc(ref, { status: "pagada", paidAmount: amount }); const snap = await getDoc(ref); return mapDebt(snap.id, snap.data()!); }
+export async function claimPendingMemberships(user: User) {
+  if (!user.email || !user.emailVerified) return;
+  const pending = await getDocs(query(collectionGroup(firestore, "members"), where("email", "==", normalizeEmail(user.email)), where("userId", "==", null)));
+  for (const member of pending.docs) { const groupRef = member.ref.parent.parent; if (!groupRef) continue; const membershipRef = doc(groupRef, "userMemberships", user.uid); await runTransaction(firestore, async (tx) => { const fresh = await tx.get(member.ref); if (fresh.data()?.userId == null) { tx.update(member.ref, { userId: user.uid }); tx.set(membershipRef, { memberId: member.id, email: normalizeEmail(user.email!) }); } }); }
 }

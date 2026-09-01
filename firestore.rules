@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function membershipPath(groupId) { return /databases/$(database)/documents/groups/$(groupId)/userMemberships/$(request.auth.uid); }
+    function isMember(groupId) { return signedIn() && exists(membershipPath(groupId)); }
+    function isOwner(groupId) { return signedIn() && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid; }
+    function verifiedEmailMatches(data) { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email == data.email; }
+
+    match /groups/{groupId} {
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isMember(groupId);
+      allow update, delete: if isOwner(groupId);
+
+      match /members/{memberId} {
+        allow read: if isMember(groupId) || (resource.data.userId == null && verifiedEmailMatches(resource.data));
+        allow create: if signedIn() && existsAfter(membershipPath(groupId)) && (
+          request.resource.data.userId == null
+          || (!exists(/databases/$(database)/documents/groups/$(groupId))
+            && getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+            && request.resource.data.userId == request.auth.uid)
+        );
+        allow update: if (isOwner(groupId)) || (
+          resource.data.userId == null
+          && request.resource.data.userId == request.auth.uid
+          && verifiedEmailMatches(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
+          && existsAfter(membershipPath(groupId))
+        );
+        allow delete: if isOwner(groupId);
+      }
+
+      match /userMemberships/{userId} {
+        allow read: if signedIn() && (userId == request.auth.uid || isOwner(groupId));
+        allow create: if signedIn() && userId == request.auth.uid
+          && request.resource.data.email == request.auth.token.email
+          && (
+            (getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+              && getAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId == request.auth.uid)
+            || (get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId == null
+              && verifiedEmailMatches(get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data))
+          );
+        allow update: if false;
+        allow delete: if isOwner(groupId);
+      }
+
+      match /debts/{debtId} {
+        allow read, create: if isMember(groupId);
+        allow update: if isMember(groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAmount'])
+          && request.resource.data.status == 'pagada'
+          && (get(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.debtorId)).data.userId == request.auth.uid
+            || get(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.lenderId)).data.userId == request.auth.uid);
+        allow delete: if isOwner(groupId);
+      }
+    }
+    match /accessCodes/{code} {
+      allow get: if signedIn(); allow list: if false;
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.ownerId == request.auth.uid;
+      allow update, delete: if false;
+    }
+    match /{path=**}/members/{memberId} {
+      allow read: if resource.data.userId == null && verifiedEmailMatches(resource.data);
+    }
+    match /appMetadata/{document} { allow read: if signedIn(); allow write: if false; }
+  }
+}

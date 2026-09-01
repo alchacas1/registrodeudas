@@ -26,6 +26,7 @@ export interface Debt {
 
 export interface Group {
   id: string;
+  ownerId?: string;
   name: string;
   type: GroupType;
   description?: string;
