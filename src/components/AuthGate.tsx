@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { completeEmailLink, isMagicLink, sendMagicLink, useCurrentUser } from "../lib/auth";
 import { Btn, Input } from "./ui";
 import { C } from "./design";
+import { firebaseAuthErrorMessage } from "../lib/auth-helpers";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading } = useCurrentUser();
@@ -25,7 +26,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     try {
       if (magicLink) { await completeEmailLink(window.location.href, email); }
       else { await sendMagicLink(email, window.location.origin); setMessage("Revisa tu correo para ingresar."); }
-    } catch { setMessage("No se pudo procesar el acceso. Intenta nuevamente."); }
+    } catch (error) { setMessage(firebaseAuthErrorMessage(error)); }
     finally { setBusy(false); }
   };
   return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif" }}>
