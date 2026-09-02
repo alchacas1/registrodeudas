@@ -90,7 +90,7 @@ src/
 ├─ lib/
 │  ├─ auth.ts
 │  ├─ db.ts
-│  ├─ supabase.ts
+│  ├─ firebase.ts
 │  └─ utils.ts      ← nuevo
 ├─ App.tsx           ← solo rutas
 ├─ main.tsx
@@ -155,7 +155,7 @@ registrodeudas/
    └─ lib/
       ├─ auth.ts
       ├─ db.ts
-      ├─ supabase.ts
+      ├─ firebase.ts
       └─ utils.ts
 ```
 
