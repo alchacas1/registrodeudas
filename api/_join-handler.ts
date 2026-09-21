@@ -2,7 +2,7 @@ import {
   JoinServiceError,
   type JoinContext,
   type JoinCredentials,
-} from "./_join-service";
+} from "./_join-service.js";
 
 type JoinOperation = (
   credentials: JoinCredentials,

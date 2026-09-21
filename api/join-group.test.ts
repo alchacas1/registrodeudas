@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as endpoint from "./join-group";
+import * as endpoint from "./join-group.js";
 
 type MethodHandler = (request: Request) => Promise<Response>;
 

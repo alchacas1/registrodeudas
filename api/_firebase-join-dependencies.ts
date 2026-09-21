@@ -11,7 +11,7 @@ import {
   type JoinDependencies,
   type MembershipMatch,
   type RateLimitState,
-} from "./_join-service";
+} from "./_join-service.js";
 
 let adminApp: App | undefined;
 

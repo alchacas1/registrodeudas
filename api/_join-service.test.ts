@@ -5,7 +5,7 @@ import {
   buildMemberUid,
   joinGroup,
   type JoinDependencies,
-} from "./_join-service";
+} from "./_join-service.js";
 
 function dependencies(overrides: Partial<JoinDependencies> = {}): JoinDependencies {
   return {

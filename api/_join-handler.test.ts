@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { JoinServiceError } from "./_join-service";
-import { createJoinGroupHandler } from "./_join-handler";
+import { JoinServiceError } from "./_join-service.js";
+import { createJoinGroupHandler } from "./_join-handler.js";
 
 describe("join group HTTP handler", () => {
   it("rejects methods other than POST without invoking the service", async () => {

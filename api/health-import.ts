@@ -1,4 +1,4 @@
-import { createJoinGroupHandler } from "./_join-handler";
+import { createJoinGroupHandler } from "./_join-handler.js";
 
 const handleRequest = createJoinGroupHandler(async () => ({
   token: "not-used",
