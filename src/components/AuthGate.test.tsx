@@ -10,12 +10,14 @@ const authState = vi.hoisted(() => ({
 }));
 const sendMagicLink = vi.hoisted(() => vi.fn());
 const completeEmailLink = vi.hoisted(() => vi.fn());
+const joinGroupWithCredentials = vi.hoisted(() => vi.fn());
 
 vi.mock("../lib/auth", () => ({
   useCurrentUser: () => authState,
   isMagicLink: () => authState.magicLink,
   sendMagicLink,
   completeEmailLink,
+  joinGroupWithCredentials,
 }));
 
 describe("AuthGate", () => {
@@ -25,6 +27,7 @@ describe("AuthGate", () => {
     authState.magicLink = false;
     sendMagicLink.mockReset().mockResolvedValue(undefined);
     completeEmailLink.mockReset().mockResolvedValue(null);
+    joinGroupWithCredentials.mockReset().mockResolvedValue({ groupId: "group-1" });
     window.history.replaceState({}, "", "/");
   });
 
@@ -48,7 +51,7 @@ describe("AuthGate", () => {
     expect(screen.getByRole("button", { name: /enviar enlace para crear/i })).toBeTruthy();
   });
 
-  it("normalizes the code and preserves the join intent in the email link", async () => {
+  it("authenticates a join directly and prepares the matched group route", async () => {
     render(<AuthGate><div>privado</div></AuthGate>);
     fireEvent.click(screen.getByRole("button", { name: /unirme a un grupo/i }));
     fireEvent.change(screen.getByRole("textbox", { name: /código del grupo/i }), {
@@ -58,13 +61,28 @@ describe("AuthGate", () => {
       target: { value: "persona@example.com" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /enviar enlace para unirme/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ingresar al grupo/i }));
 
-    await waitFor(() => expect(screen.getByText(/enlace enviado/i)).toBeTruthy());
-    expect(sendMagicLink).toHaveBeenCalledWith(
-      "persona@example.com",
-      `${window.location.origin}/?entry=join&code=ABCDE`,
-    );
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group-1"));
+    expect(joinGroupWithCredentials).toHaveBeenCalledWith("ABCDE", "persona@example.com");
+    expect(sendMagicLink).not.toHaveBeenCalled();
+    expect(screen.queryByText(/enlace enviado/i)).toBeNull();
+  });
+
+  it("shows one generic message when the code and email do not match", async () => {
+    joinGroupWithCredentials.mockRejectedValue({ kind: "invalid" });
+    render(<AuthGate><div>privado</div></AuthGate>);
+    fireEvent.click(screen.getByRole("button", { name: /unirme a un grupo/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /código del grupo/i }), {
+      target: { value: "ABCDE" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /correo/i }), {
+      target: { value: "persona@example.com" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /ingresar al grupo/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("No se pudo ingresar con esos datos.");
   });
 
   it("asks for the email directly when a magic link was opened on another device", async () => {

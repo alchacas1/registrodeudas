@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { completeEmailLink, isMagicLink, sendMagicLink, useCurrentUser } from "../lib/auth";
+import { completeEmailLink, isMagicLink, joinGroupWithCredentials, sendMagicLink, useCurrentUser } from "../lib/auth";
 import { firebaseAuthErrorMessage, normalizeEmail } from "../lib/auth-helpers";
 import {
   buildEntryRedirectUrl,
@@ -129,6 +129,28 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
       return;
     }
+    if (intent?.mode === "join") {
+      setBusy(true);
+      setMessage("");
+      try {
+        const result = await joinGroupWithCredentials(intent.code, email);
+        window.history.replaceState({}, "", `/group/${encodeURIComponent(result.groupId)}`);
+      } catch (error) {
+        const kind = typeof error === "object" && error && "kind" in error
+          ? String(error.kind)
+          : "unavailable";
+        setMessage(
+          kind === "invalid"
+            ? "No se pudo ingresar con esos datos."
+            : kind === "limited"
+              ? "Demasiados intentos. Espera unos minutos."
+              : "El acceso no está disponible temporalmente.",
+        );
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     await sendAccessLink();
   };
 
@@ -241,11 +263,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
         />
         <Btn onClick={() => undefined} disabled={!canSubmit}>
           {busy
-            ? magicLink ? "Completando…" : "Enviando…"
+            ? magicLink ? "Completando…" : joining ? "Ingresando…" : "Enviando…"
             : magicLink
               ? "Completar acceso"
               : joining
-                ? "Enviar enlace para unirme"
+                ? "Ingresar al grupo"
                 : "Enviar enlace para crear"}
         </Btn>
         {message && <p role="alert" style={{ color: C.red, margin: 0 }}>{message}</p>}

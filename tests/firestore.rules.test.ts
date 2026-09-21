@@ -17,6 +17,36 @@ async function createGroupAsOwner() {
   await assertSucceeds(batch.commit());
 }
 
+async function seedGroupSessionData() {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "groups/group-1"), { ownerId: "owner", name: "Grupo uno" });
+    await setDoc(doc(db, "groups/group-1/members/member-1"), {
+      name: "Invitada",
+      email: "guest@example.com",
+      userId: "group-user",
+    });
+    await setDoc(doc(db, "groups/group-1/userMemberships/group-user"), {
+      memberId: "member-1",
+      email: "guest@example.com",
+    });
+    await setDoc(doc(db, "groups/group-2"), { ownerId: "other-owner", name: "Grupo dos" });
+    await setDoc(doc(db, "groups/group-2/userMemberships/group-user"), {
+      memberId: "member-2",
+      email: "guest@example.com",
+    });
+    await setDoc(doc(db, "accessCodes/ABCDE"), { groupId: "group-1" });
+  });
+}
+
+function groupSession(groupId = "group-1", uid = "group-user") {
+  return env.authenticatedContext(uid, {
+    groupSession: true,
+    groupId,
+    memberId: "member-1",
+  }).firestore();
+}
+
 describe("Firestore rules", () => {
   it("denies unauthenticated group reads", async () => {
     await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), "groups/group-1")));
@@ -63,5 +93,32 @@ describe("Firestore rules", () => {
     await assertSucceeds(updateDoc(doc(debtor, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
     const other = env.authenticatedContext("other-user").firestore();
     await assertFails(updateDoc(doc(other, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
+  });
+  it("allows a group session to read its claimed group", async () => {
+    await env.clearFirestore(); await seedGroupSessionData();
+    await assertSucceeds(getDoc(doc(groupSession(), "groups/group-1")));
+  });
+  it("denies a group session access to another group even when its UID has membership", async () => {
+    await env.clearFirestore(); await seedGroupSessionData();
+    await assertFails(getDoc(doc(groupSession(), "groups/group-2")));
+  });
+  it("denies group sessions direct access to group codes", async () => {
+    await env.clearFirestore(); await seedGroupSessionData();
+    await assertFails(getDoc(doc(groupSession(), "accessCodes/ABCDE")));
+  });
+  it("denies group sessions from creating groups", async () => {
+    await env.clearFirestore();
+    const db = groupSession("group-1", "owner");
+    await assertFails(setDoc(doc(db, "groups/new-group"), { ownerId: "owner", name: "Nuevo" }));
+  });
+  it("does not grant owner privileges to a group session with the owner's UID", async () => {
+    await env.clearFirestore(); await seedGroupSessionData();
+    const db = groupSession("group-1", "owner");
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "groups/group-1/userMemberships/owner"), {
+        memberId: "member-owner",
+      });
+    });
+    await assertFails(updateDoc(doc(db, "groups/group-1"), { name: "Nombre alterado" }));
   });
 });

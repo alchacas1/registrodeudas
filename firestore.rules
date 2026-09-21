@@ -2,19 +2,22 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function isGroupSession() { return signedIn() && 'groupSession' in request.auth.token && request.auth.token.groupSession == true; }
+    function sessionAllows(groupId) { return !isGroupSession() || request.auth.token.groupId == groupId; }
     function membershipPath(groupId) { return /databases/$(database)/documents/groups/$(groupId)/userMemberships/$(request.auth.uid); }
-    function isMember(groupId) { return signedIn() && exists(membershipPath(groupId)); }
-    function isOwner(groupId) { return signedIn() && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid; }
-    function verifiedEmailMatches(data) { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email == data.email; }
+    function isMember(groupId) { return signedIn() && sessionAllows(groupId) && exists(membershipPath(groupId)); }
+    function isMemberAfter(groupId) { return signedIn() && sessionAllows(groupId) && existsAfter(membershipPath(groupId)); }
+    function isOwner(groupId) { return signedIn() && !isGroupSession() && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid; }
+    function verifiedEmailMatches(data) { return signedIn() && !isGroupSession() && request.auth.token.email_verified == true && request.auth.token.email == data.email; }
 
     match /groups/{groupId} {
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn() && !isGroupSession() && request.resource.data.ownerId == request.auth.uid;
       allow read: if isMember(groupId);
       allow update, delete: if isOwner(groupId);
 
       match /members/{memberId} {
         allow read: if isMember(groupId) || (resource.data.userId == null && verifiedEmailMatches(resource.data));
-        allow create: if signedIn() && existsAfter(membershipPath(groupId)) && (
+        allow create: if isMemberAfter(groupId) && (
           request.resource.data.userId == null
           || (!exists(/databases/$(database)/documents/groups/$(groupId))
             && getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
@@ -25,14 +28,14 @@ service cloud.firestore {
           && request.resource.data.userId == request.auth.uid
           && verifiedEmailMatches(resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
-          && existsAfter(membershipPath(groupId))
+          && isMemberAfter(groupId)
         );
         allow delete: if isOwner(groupId);
       }
 
       match /userMemberships/{userId} {
-        allow read: if signedIn() && (userId == request.auth.uid || isOwner(groupId));
-        allow create: if signedIn() && userId == request.auth.uid
+        allow read: if signedIn() && sessionAllows(groupId) && (userId == request.auth.uid || isOwner(groupId));
+        allow create: if signedIn() && !isGroupSession() && userId == request.auth.uid
           && request.resource.data.email == request.auth.token.email
           && (
             (getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
@@ -55,14 +58,14 @@ service cloud.firestore {
       }
     }
     match /accessCodes/{code} {
-      allow get: if signedIn(); allow list: if false;
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid
+      allow get: if signedIn() && !isGroupSession(); allow list: if false;
+      allow create: if signedIn() && !isGroupSession() && request.resource.data.createdBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.ownerId == request.auth.uid;
       allow update, delete: if false;
     }
     match /{path=**}/members/{memberId} {
       allow read: if resource.data.userId == null && verifiedEmailMatches(resource.data);
     }
-    match /appMetadata/{document} { allow read: if signedIn(); allow write: if false; }
+    match /appMetadata/{document} { allow read: if signedIn() && !isGroupSession(); allow write: if false; }
   }
 }
