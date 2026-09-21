@@ -24,3 +24,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+.env
+.env.local
+.env.*.local
+.secrets-temp/
+!.env.example
