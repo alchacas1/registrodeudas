@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import { GET } from "../api/health-import";
 
 describe("GET /api/health-import", () => {
-  it("loads the join handler without loading Firebase", async () => {
+  it("reports handler, Firebase module, and server environment readiness", async () => {
     const response = await GET(new Request("https://example.test/api/health-import"));
+    const body = await response.json();
 
-    expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toBe("POST");
+    expect(response.status).toBe(200);
+    expect(body.handlerStatus).toBe(405);
+    expect(body.firebaseModuleLoaded).toBe(true);
+    expect(body.missingServerEnvironment).toEqual(expect.any(Array));
   });
 });
