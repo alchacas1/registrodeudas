@@ -28,7 +28,22 @@ export async function createGroup(name: string, type: GroupType, creatorName: st
   }
   throw new Error("No se pudo generar un código de acceso único.");
 }
-export async function findGroupByCode(code: string): Promise<{ id: string } | null> { const user = requireUser(); const snap = await getDoc(doc(firestore, "accessCodes", code.trim().toUpperCase())); if (!snap.exists()) return null; await claimPendingMemberships(user); return { id: String(snap.data().groupId) }; }
+export type JoinGroupResult =
+  | { status: "joined"; id: string }
+  | { status: "invalid-code" }
+  | { status: "not-invited" };
+
+export async function findGroupByCode(code: string): Promise<JoinGroupResult> {
+  const user = requireUser();
+  const snap = await getDoc(doc(firestore, "accessCodes", code.trim().toUpperCase()));
+  if (!snap.exists()) return { status: "invalid-code" };
+
+  const groupId = String(snap.data().groupId);
+  await claimPendingMemberships(user);
+  const membership = await getDoc(doc(firestore, "groups", groupId, "userMemberships", user.uid));
+  if (!membership.exists()) return { status: "not-invited" };
+  return { status: "joined", id: groupId };
+}
 export async function getFullGroup(id: string): Promise<Group | null> {
   requireUser(); const groupRef = doc(firestore, "groups", id);
   const [groupSnap, membersSnap, debtsSnap] = await Promise.all([getDoc(groupRef), getDocs(collection(groupRef, "members")), getDocs(collection(groupRef, "debts"))]);
