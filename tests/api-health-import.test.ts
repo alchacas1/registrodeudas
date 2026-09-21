@@ -9,7 +9,12 @@ describe("GET /api/health-import", () => {
 
     expect(response.status).toBe(200);
     expect(body.handlerStatus).toBe(405);
-    expect(body.firebaseModuleLoaded).toBe(true);
+    expect(body.imports).toEqual({
+      app: { loaded: true },
+      auth: { loaded: true },
+      firestore: { loaded: true },
+      joinDependencies: { loaded: true },
+    });
     expect(body.missingServerEnvironment).toEqual(expect.any(Array));
   });
 });
