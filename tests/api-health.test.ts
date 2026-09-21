@@ -7,6 +7,9 @@ describe("GET /api/health", () => {
     const response = GET();
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      node: process.version,
+    });
   });
 });
