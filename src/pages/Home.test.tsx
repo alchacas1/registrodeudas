@@ -49,6 +49,13 @@ describe("Home entry flow", () => {
     expect(screen.queryByLabelText(/código del grupo/i)).toBeNull();
   });
 
+  it("shows the app version in the footer", () => {
+    renderHome();
+
+    const footer = screen.getByRole("contentinfo", { name: /versión/i });
+    expect(footer.textContent).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
   it("shows the authenticated account and a sign-out action", () => {
     renderHome();
 

@@ -1340,7 +1340,9 @@ export function GroupPage() {
           </div>
         </div>
       </div>
-      <footer className="group-dashboard-mobile-footer">v{versionInfo.version}</footer>
+      <footer className="app-version-footer" aria-label="Versión de la aplicación">
+        v{versionInfo.version}
+      </footer>
       {activeDialog && (
         <div
           onMouseDown={(event) => {

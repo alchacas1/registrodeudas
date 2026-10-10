@@ -155,14 +155,16 @@
 		max-width: 448px;
 	}
 
-	.group-dashboard-mobile-footer {
+	.app-version-footer {
 		border-top: 1px solid rgba(255,255,255,0.07);
-		color: #44445a;
+		color: #8888a8;
 		display: block;
+		flex-shrink: 0;
 		font-size: 13px;
 		margin-top: auto;
 		padding: 18px 16px 22px;
 		text-align: center;
+		width: 100%;
 	}
 
 	@media (min-width: 640px) {
@@ -219,9 +221,6 @@
 			width: auto;
 		}
 
-		.group-dashboard-mobile-footer {
-			display: none;
-		}
 	}
 
 	@media (min-width: 1024px) {

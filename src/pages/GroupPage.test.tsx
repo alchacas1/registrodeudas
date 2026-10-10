@@ -79,6 +79,13 @@ describe("GroupPage debt cards", () => {
     expect(reason.nextElementSibling).toBe(createdAt);
   });
 
+  it("shows the app version in the footer", async () => {
+    renderGroupPage();
+
+    const footer = await screen.findByRole("contentinfo", { name: /versión/i });
+    expect(footer.textContent).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
   it("does not let the debtor confirm their own payment", async () => {
     authState.user = { uid: "debtor-user" };
     group.members[0].userId = "debtor-user";

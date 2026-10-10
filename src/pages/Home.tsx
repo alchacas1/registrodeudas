@@ -298,15 +298,7 @@ export function Home() {
         </div>
       </main>
 
-      <footer
-        style={{
-          borderTop: `1px solid ${C.border}`,
-          padding: "18px 24px",
-          textAlign: "center",
-          color: C.text3,
-          fontSize: 13,
-        }}
-      >
+      <footer className="app-version-footer" aria-label="Versión de la aplicación">
         v{versionInfo.version}
       </footer>
     </div>
