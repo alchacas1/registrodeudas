@@ -78,7 +78,7 @@ describe("Firestore rules", () => {
     invalid.set(doc(impostor, "groups/group-1/userMemberships/impostor"), { memberId: "invite-1", email: "other@example.com" });
     await assertFails(invalid.commit());
   });
-  it("allows a debt participant and rejects another member when confirming payment", async () => {
+  it("allows only the lender to confirm payment", async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
@@ -86,13 +86,16 @@ describe("Firestore rules", () => {
       await setDoc(doc(db, "groups/group-1/members/debtor"), { userId: "debtor-user" });
       await setDoc(doc(db, "groups/group-1/members/lender"), { userId: "lender-user" });
       await setDoc(doc(db, "groups/group-1/userMemberships/debtor-user"), { memberId: "debtor" });
+      await setDoc(doc(db, "groups/group-1/userMemberships/lender-user"), { memberId: "lender" });
       await setDoc(doc(db, "groups/group-1/userMemberships/other-user"), { memberId: "other" });
       await setDoc(doc(db, "groups/group-1/debts/debt-1"), { debtorId: "debtor", lenderId: "lender", amount: 10, status: "pendiente", paidAmount: 0 });
     });
     const debtor = env.authenticatedContext("debtor-user").firestore();
-    await assertSucceeds(updateDoc(doc(debtor, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
+    await assertFails(updateDoc(doc(debtor, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
     const other = env.authenticatedContext("other-user").firestore();
     await assertFails(updateDoc(doc(other, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
+    const lender = env.authenticatedContext("lender-user").firestore();
+    await assertSucceeds(updateDoc(doc(lender, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
   });
   it("allows a group session to read its claimed group", async () => {
     await env.clearFirestore(); await seedGroupSessionData();

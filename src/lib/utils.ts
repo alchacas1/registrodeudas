@@ -88,3 +88,13 @@ export function fmt(value: number): string {
     maximumFractionDigits: 0,
   });
 }
+
+export function formatCreatedAt(createdAt: string): string {
+  return new Intl.DateTimeFormat("es-CR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/Costa_Rica",
+  })
+    .format(new Date(createdAt))
+    .replace(/\u00a0/g, " ");
+}

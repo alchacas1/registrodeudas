@@ -52,8 +52,7 @@ service cloud.firestore {
         allow update: if isMember(groupId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAmount'])
           && request.resource.data.status == 'pagada'
-          && (get(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.debtorId)).data.userId == request.auth.uid
-            || get(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.lenderId)).data.userId == request.auth.uid);
+          && get(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.lenderId)).data.userId == request.auth.uid;
         allow delete: if isOwner(groupId);
       }
     }

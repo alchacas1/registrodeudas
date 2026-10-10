@@ -14,6 +14,7 @@ import {
   computeSummaries,
   currencySymbol,
   fmt,
+  formatCreatedAt,
 } from "../lib/utils";
 import { baseCard, C } from "../components/design";
 import { Avatar, Btn, Input, KpiCard, StyledSelect } from "../components/ui";
@@ -200,7 +201,7 @@ export function GroupPage() {
     ? group.members.find((m) => m.userId === user.uid)
     : undefined;
   const canConfirm = (d: Debt) =>
-    !!myMember && (myMember.id === d.debtorId || myMember.id === d.lenderId);
+    !!myMember && myMember.id === d.lenderId;
 
   const copyCode = () => {
     navigator.clipboard.writeText(group.accessCode);
@@ -677,6 +678,16 @@ export function GroupPage() {
                               {d.reason}
                             </div>
                           )}
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: C.text3,
+                              marginTop: 3,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {formatCreatedAt(d.createdAt)}
+                          </div>
                         </div>
                         <div
                           className="group-dashboard-debt-amount"
@@ -731,7 +742,7 @@ export function GroupPage() {
                                 lineHeight: 1.3,
                               }}
                             >
-                              Solo {debtor?.name} o {lender?.name} confirman
+                              Solo {lender?.name} confirma
                             </div>
                           )}
                         </div>

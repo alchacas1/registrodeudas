@@ -7,6 +7,7 @@ import {
   computeSummaries,
   currencySymbol,
   fmt,
+  formatCreatedAt,
 } from "./utils";
 
 const baseGroup: Group = {
@@ -151,5 +152,13 @@ describe("currencySymbol", () => {
 describe("fmt", () => {
   it("formats numbers for Costa Rican Spanish without decimals", () => {
     expect(fmt(1234567.89)).toMatch(/^1(?:[.\s\u00a0])234(?:[.\s\u00a0])568$/);
+  });
+});
+
+describe("formatCreatedAt", () => {
+  it("formats an ISO timestamp as Costa Rican local date and time", () => {
+    expect(formatCreatedAt("2026-10-10T21:45:00.000Z")).toBe(
+      "10 oct 2026, 3:45 p. m.",
+    );
   });
 });
