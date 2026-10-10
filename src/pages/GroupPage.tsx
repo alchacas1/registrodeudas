@@ -11,6 +11,7 @@ import {
 import {
   buildSplitDebts,
   computeDebtBetween,
+  computeMutualDebt,
   computeSummaries,
   currencySymbol,
   fmt,
@@ -54,6 +55,12 @@ export function GroupPage() {
   const [searchDebtor, setSearchDebtor] = useState("");
   const [searchLender, setSearchLender] = useState("");
   const [searchResult, setSearchResult] = useState<number | null>(null);
+  const [comparePersonA, setComparePersonA] = useState("");
+  const [comparePersonB, setComparePersonB] = useState("");
+  const [compareCurrency, setCompareCurrency] = useState("CRC");
+  const [compareResult, setCompareResult] = useState<
+    ReturnType<typeof computeMutualDebt> | null
+  >(null);
   const [copied, setCopied] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<
@@ -289,6 +296,30 @@ export function GroupPage() {
         computeDebtBetween(searchDebtor, searchLender, group.debts),
       );
   };
+
+  const doCompare = () => {
+    if (
+      !comparePersonA ||
+      !comparePersonB ||
+      comparePersonA === comparePersonB
+    )
+      return;
+    setCompareResult(
+      computeMutualDebt(
+        comparePersonA,
+        comparePersonB,
+        compareCurrency,
+        group.debts,
+      ),
+    );
+  };
+
+  const comparisonDebtor = compareResult?.debtorId
+    ? group.members.find((member) => member.id === compareResult.debtorId)
+    : undefined;
+  const comparisonLender = compareResult?.lenderId
+    ? group.members.find((member) => member.id === compareResult.lenderId)
+    : undefined;
 
   const splitTotal = parseFloat(splitAmount);
   const splitItems = buildSplitDebts(splitTotal, splitLender, splitDebtors, {
@@ -1679,6 +1710,142 @@ export function GroupPage() {
                     </div>
                   </div>
                 )}
+
+                <div
+                  style={{
+                    borderTop: `1px solid ${C.border}`,
+                    marginTop: 10,
+                    paddingTop: 20,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: 850 }}>
+                    Comparar deuda
+                  </div>
+                  <div style={{ color: C.text3, fontSize: 12, lineHeight: 1.5 }}>
+                    Compensa las deudas pendientes entre dos personas en una
+                    misma moneda.
+                  </div>
+
+                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                    Persona A
+                  </label>
+                  <StyledSelect
+                    value={comparePersonA}
+                    onChange={(value) => {
+                      setComparePersonA(value);
+                      setCompareResult(null);
+                    }}
+                  >
+                    <option value="">Persona A</option>
+                    {group.members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </StyledSelect>
+
+                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                    Persona B
+                  </label>
+                  <StyledSelect
+                    value={comparePersonB}
+                    onChange={(value) => {
+                      setComparePersonB(value);
+                      setCompareResult(null);
+                    }}
+                  >
+                    <option value="">Persona B</option>
+                    {group.members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </StyledSelect>
+
+                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                    Moneda
+                  </label>
+                  <StyledSelect
+                    value={compareCurrency}
+                    onChange={(value) => {
+                      setCompareCurrency(value);
+                      setCompareResult(null);
+                    }}
+                  >
+                    <option value="CRC">CRC (₡)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                  </StyledSelect>
+
+                  <Btn
+                    onClick={doCompare}
+                    disabled={
+                      !comparePersonA ||
+                      !comparePersonB ||
+                      comparePersonA === comparePersonB
+                    }
+                  >
+                    Comparar
+                  </Btn>
+
+                  {compareResult && (
+                    <div
+                      style={{
+                        background:
+                          compareResult.amount > 0 ? C.redLo : C.greenLo,
+                        border: `1px solid ${
+                          compareResult.amount > 0
+                            ? "rgba(248,113,113,0.25)"
+                            : "rgba(74,222,128,0.25)"
+                        }`,
+                        borderRadius: 12,
+                        padding: 16,
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: C.text2,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          marginBottom: 8,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Resultado compensado
+                      </div>
+                      {compareResult.amount === 0 ? (
+                        <div style={{ color: C.green, fontWeight: 800 }}>
+                          No hay deuda pendiente entre ambos.
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ color: C.text, fontWeight: 800 }}>
+                            {comparisonDebtor?.name} debe a {comparisonLender?.name}
+                          </div>
+                          <div
+                            style={{
+                              color: C.red,
+                              fontSize: 28,
+                              fontWeight: 900,
+                              fontVariantNumeric: "tabular-nums",
+                              margin: "4px 0 8px",
+                            }}
+                          >
+                            {currencySymbol(compareCurrency)}
+                            {fmt(compareResult.amount)}
+                          </div>
+                          <div style={{ color: C.text3, fontSize: 12 }}>
+                            {comparisonLender?.name} no debe nada a {comparisonDebtor?.name}.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

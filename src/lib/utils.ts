@@ -40,6 +40,47 @@ export function computeDebtBetween(
     .reduce((sum, debt) => sum + (debt.amount - debt.paidAmount), 0);
 }
 
+export interface MutualDebtComparison {
+  personAToB: number;
+  personBToA: number;
+  debtorId: string | null;
+  lenderId: string | null;
+  amount: number;
+}
+
+export function computeMutualDebt(
+  personAId: string,
+  personBId: string,
+  currency: string,
+  debts: Debt[],
+): MutualDebtComparison {
+  const remainingBetween = (debtorId: string, lenderId: string) =>
+    debts
+      .filter(
+        (debt) =>
+          debt.debtorId === debtorId &&
+          debt.lenderId === lenderId &&
+          debt.currency === currency &&
+          debt.status !== "pagada",
+      )
+      .reduce(
+        (sum, debt) => sum + Math.max(0, debt.amount - debt.paidAmount),
+        0,
+      );
+
+  const personAToB = remainingBetween(personAId, personBId);
+  const personBToA = remainingBetween(personBId, personAId);
+  const netAmount = personAToB - personBToA;
+
+  return {
+    personAToB,
+    personBToA,
+    debtorId: netAmount === 0 ? null : netAmount > 0 ? personAId : personBId,
+    lenderId: netAmount === 0 ? null : netAmount > 0 ? personBId : personAId,
+    amount: Math.abs(netAmount),
+  };
+}
+
 export function buildSplitDebts(
   totalAmount: number,
   lenderId: string,

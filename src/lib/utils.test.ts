@@ -4,6 +4,7 @@ import {
   avatarColors,
   buildSplitDebts,
   computeDebtBetween,
+  computeMutualDebt,
   computeSummaries,
   currencySymbol,
   fmt,
@@ -111,6 +112,106 @@ describe("computeDebtBetween", () => {
   it("returns remaining unpaid debt for a debtor and lender pair", () => {
     expect(computeDebtBetween("ana", "luis", baseGroup.debts)).toBe(7500);
     expect(computeDebtBetween("luis", "ana", baseGroup.debts)).toBe(0);
+  });
+});
+
+describe("computeMutualDebt", () => {
+  it("compensates mutual balances in the selected currency", () => {
+    const debts = [
+      {
+        ...baseGroup.debts[0],
+        id: "a-to-b",
+        debtorId: "ana",
+        lenderId: "luis",
+        amount: 10500,
+        paidAmount: 0,
+      },
+      {
+        ...baseGroup.debts[0],
+        id: "b-to-a",
+        debtorId: "luis",
+        lenderId: "ana",
+        amount: 5000,
+        paidAmount: 0,
+      },
+    ];
+
+    expect(computeMutualDebt("ana", "luis", "CRC", debts)).toEqual({
+      personAToB: 10500,
+      personBToA: 5000,
+      debtorId: "ana",
+      lenderId: "luis",
+      amount: 5500,
+    });
+  });
+
+  it("uses remaining partial balances and ignores paid debts and other currencies", () => {
+    const debts = [
+      {
+        ...baseGroup.debts[0],
+        id: "partial-crc",
+        debtorId: "ana",
+        lenderId: "luis",
+        amount: 10000,
+        paidAmount: 2500,
+        status: "parcial" as const,
+      },
+      {
+        ...baseGroup.debts[0],
+        id: "paid-crc",
+        debtorId: "ana",
+        lenderId: "luis",
+        amount: 9000,
+        paidAmount: 0,
+        status: "pagada" as const,
+      },
+      {
+        ...baseGroup.debts[0],
+        id: "usd",
+        debtorId: "luis",
+        lenderId: "ana",
+        amount: 7000,
+        paidAmount: 0,
+        currency: "USD",
+      },
+    ];
+
+    expect(computeMutualDebt("ana", "luis", "CRC", debts)).toEqual({
+      personAToB: 7500,
+      personBToA: 0,
+      debtorId: "ana",
+      lenderId: "luis",
+      amount: 7500,
+    });
+  });
+
+  it("returns no debtor when both balances compensate completely", () => {
+    const debts = [
+      {
+        ...baseGroup.debts[0],
+        id: "a-to-b",
+        debtorId: "ana",
+        lenderId: "luis",
+        amount: 5000,
+        paidAmount: 0,
+      },
+      {
+        ...baseGroup.debts[0],
+        id: "b-to-a",
+        debtorId: "luis",
+        lenderId: "ana",
+        amount: 5000,
+        paidAmount: 0,
+      },
+    ];
+
+    expect(computeMutualDebt("ana", "luis", "CRC", debts)).toEqual({
+      personAToB: 5000,
+      personBToA: 5000,
+      debtorId: null,
+      lenderId: null,
+      amount: 0,
+    });
   });
 });
 

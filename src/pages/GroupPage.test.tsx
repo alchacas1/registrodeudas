@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { Group } from "../types";
@@ -103,5 +103,40 @@ describe("GroupPage debt cards", () => {
     renderGroupPage();
 
     expect(await screen.findByRole("button", { name: "Pagar ✓" })).toBeTruthy();
+  });
+
+  it("compares and compensates mutual debt in the selected currency", async () => {
+    getFullGroup.mockResolvedValue({
+      ...group,
+      debts: [
+        ...group.debts,
+        {
+          ...group.debts[0],
+          id: "debt-2",
+          debtorId: "lender",
+          lenderId: "debtor",
+          amount: 1000,
+          reason: "Taxi",
+          createdAt: "2026-10-10T22:00:00.000Z",
+        },
+      ],
+    });
+    renderGroupPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Buscar deuda" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Buscar deuda" });
+    expect(within(dialog).getByText("Comparar deuda")).toBeTruthy();
+
+    const selects = within(dialog).getAllByRole("combobox");
+    fireEvent.change(selects[2], { target: { value: "debtor" } });
+    fireEvent.change(selects[3], { target: { value: "lender" } });
+    fireEvent.change(selects[4], { target: { value: "CRC" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Comparar" }));
+
+    expect(within(dialog).getByText("Anders1 debe a Alvaro")).toBeTruthy();
+    expect(within(dialog).getByText(/3(?:[.\s\u00a0])560/)).toBeTruthy();
   });
 });
