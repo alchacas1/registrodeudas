@@ -7,16 +7,18 @@ import { Home } from "./Home";
 const createGroup = vi.hoisted(() => vi.fn());
 const findGroupByCode = vi.hoisted(() => vi.fn());
 const signOut = vi.hoisted(() => vi.fn());
+const authState = vi.hoisted(() => ({
+  user: { uid: "user-1", email: "persona@example.com" },
+  loading: false,
+  groupSession: false,
+}));
 
 vi.mock("../lib/db", () => ({
   createGroup,
   findGroupByCode,
 }));
 vi.mock("../lib/auth", () => ({
-  useCurrentUser: () => ({
-    user: { uid: "user-1", email: "persona@example.com" },
-    loading: false,
-  }),
+  useCurrentUser: () => authState,
   signOut,
 }));
 
@@ -35,7 +37,8 @@ describe("Home entry flow", () => {
   beforeEach(() => {
     createGroup.mockReset();
     findGroupByCode.mockReset();
-    signOut.mockReset();
+    signOut.mockReset().mockResolvedValue(undefined);
+    authState.groupSession = false;
   });
 
   afterEach(cleanup);
@@ -70,6 +73,18 @@ describe("Home entry flow", () => {
     expect(screen.getByRole("heading", { name: /crear grupo/i })).toBeTruthy();
     expect(screen.getByPlaceholderText(/nombre del grupo/i)).toBeTruthy();
     expect(screen.queryByLabelText(/código del grupo/i)).toBeNull();
+  });
+
+  it("signs out a restricted group session before offering another group action", async () => {
+    authState.groupSession = true;
+
+    renderHome();
+
+    expect(screen.getByText(/preparando el acceso/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /crear un grupo/i })).toBeNull();
+    await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    expect(createGroup).not.toHaveBeenCalled();
+    expect(findGroupByCode).not.toHaveBeenCalled();
   });
 
   it("keeps the code and explains when the authenticated email was not invited", async () => {

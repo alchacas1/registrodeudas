@@ -1,21 +1,45 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
 
 const signInWithCustomToken = vi.hoisted(() => vi.fn());
+const getIdTokenResult = vi.hoisted(() => vi.fn());
+const onAuthStateChanged = vi.hoisted(() => vi.fn());
+const claimPendingMemberships = vi.hoisted(() => vi.fn());
 const auth = vi.hoisted(() => ({ name: "test-auth" }));
 
 vi.mock("firebase/auth", () => ({
+  getIdTokenResult,
   isSignInWithEmailLink: vi.fn(),
-  onAuthStateChanged: vi.fn(),
+  onAuthStateChanged,
   sendSignInLinkToEmail: vi.fn(),
   signInWithEmailLink: vi.fn(),
   signInWithCustomToken,
   signOut: vi.fn(),
 }));
 vi.mock("./firebase", () => ({ auth }));
-vi.mock("./db", () => ({ claimPendingMemberships: vi.fn() }));
+vi.mock("./db", () => ({ claimPendingMemberships }));
 
-import { DirectJoinError, joinGroupWithCredentials } from "./auth";
+import { DirectJoinError, joinGroupWithCredentials, useCurrentUser } from "./auth";
+
+describe("useCurrentUser", () => {
+  beforeEach(() => {
+    onAuthStateChanged.mockReset().mockImplementation((_auth, observer) => {
+      observer({ uid: "group-user", email: "guest@example.com" });
+      return vi.fn();
+    });
+    getIdTokenResult.mockReset().mockResolvedValue({ claims: { groupSession: true } });
+    claimPendingMemberships.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("exposes when the authenticated user has a restricted group session", async () => {
+    const { result } = renderHook(() => useCurrentUser());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.groupSession).toBe(true);
+    expect(claimPendingMemberships).not.toHaveBeenCalled();
+  });
+});
 
 describe("joinGroupWithCredentials", () => {
   beforeEach(() => {

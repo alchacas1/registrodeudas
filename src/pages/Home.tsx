@@ -64,7 +64,7 @@ function ActionCard({
 export function Home() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useCurrentUser();
+  const { user, loading: authLoading, groupSession } = useCurrentUser();
   const resumedIntent = useMemo(() => readEntryIntent(location.search), [location.search]);
   const [mode, setMode] = useState<HomeMode>(() => resumedIntent?.mode ?? null);
   const [name, setName] = useState("");
@@ -77,6 +77,13 @@ export function Home() {
   const [joining, setJoining] = useState(false);
   const [formError, setFormError] = useState("");
   const resumedJoinStarted = useRef(false);
+  const restrictedSignOutStarted = useRef(false);
+
+  useEffect(() => {
+    if (!groupSession || restrictedSignOutStarted.current) return;
+    restrictedSignOutStarted.current = true;
+    void signOut();
+  }, [groupSession]);
 
   const handleCreate = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -139,6 +146,10 @@ export function Home() {
     setCode("");
     navigate("/", { replace: true });
   };
+
+  if (authLoading || groupSession) {
+    return <div style={pageStyle}>Preparando el acceso…</div>;
+  }
 
   return (
     <div style={pageStyle}>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { User } from "firebase/auth";
-import { isSignInWithEmailLink, onAuthStateChanged, sendSignInLinkToEmail, signInWithCustomToken, signInWithEmailLink, signOut as firebaseSignOut } from "firebase/auth";
+import { getIdTokenResult, isSignInWithEmailLink, onAuthStateChanged, sendSignInLinkToEmail, signInWithCustomToken, signInWithEmailLink, signOut as firebaseSignOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { EMAIL_STORAGE_KEY, getEmailForLink, normalizeEmail } from "./auth-helpers";
 import { claimPendingMemberships } from "./db";
@@ -39,4 +39,43 @@ export async function joinGroupWithCredentials(code: string, email: string) {
   }
 }
 export async function signOut() { await firebaseSignOut(auth); }
-export function useCurrentUser() { const [user, setUser] = useState<User | null>(null), [loading, setLoading] = useState(true); useEffect(() => onAuthStateChanged(auth, (next) => { setUser(next); setLoading(false); if (next) void claimPendingMemberships(next); }), []); return { user, loading }; }
+export function useCurrentUser() {
+  const [user, setUser] = useState<User | null>(null);
+  const [groupSession, setGroupSession] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (next) => {
+      if (!active) return;
+      setLoading(true);
+      setUser(next);
+      if (!next) {
+        setGroupSession(false);
+        setLoading(false);
+        return;
+      }
+
+      let restrictedToGroup = false;
+      try {
+        const token = await getIdTokenResult(next);
+        if (!active) return;
+        restrictedToGroup = token.claims.groupSession === true;
+        setGroupSession(restrictedToGroup);
+      } catch {
+        if (!active) return;
+        setGroupSession(false);
+      } finally {
+        if (active) setLoading(false);
+      }
+
+      if (!restrictedToGroup) void claimPendingMemberships(next);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  return { user, loading, groupSession };
+}
