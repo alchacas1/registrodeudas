@@ -1,9 +1,9 @@
 import { useState, type CSSProperties } from "react";
 import { avatarColors } from "../lib/utils";
-import { C, baseCard, baseInput, baseSelect } from "./design";
+import { C, baseInput, baseSelect } from "./design";
 
 export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
-  const [from, to] = avatarColors(name);
+  const [background] = avatarColors(name);
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -16,7 +16,7 @@ export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
         width: size,
         height: size,
         borderRadius: "50%",
-        background: `linear-gradient(135deg, ${from}, ${to})`,
+        background,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -31,7 +31,6 @@ export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
     </div>
   );
 }
-
 
 // Reusable Input
 export function Input({
@@ -78,15 +77,25 @@ export function StyledSelect({
   onChange,
   children,
   style,
+  id,
+  autoFocus,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
   children: React.ReactNode;
   style?: CSSProperties;
+  id?: string;
+  autoFocus?: boolean;
+  ariaLabel?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <select
+      id={id}
+      autoFocus={autoFocus}
+      data-dialog-initial-focus={autoFocus || undefined}
+      aria-label={ariaLabel}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onFocus={() => setFocused(true)}
@@ -102,7 +111,6 @@ export function StyledSelect({
     </select>
   );
 }
-
 // Button
 export function Btn({
   onClick,
@@ -121,7 +129,7 @@ export function Btn({
   const base: CSSProperties =
     variant === "primary"
       ? {
-          background: `linear-gradient(135deg, ${C.accent}, #9f5ff7)`,
+          background: C.accent,
           border: "none",
           color: "#fff",
           fontWeight: 700,
@@ -144,9 +152,8 @@ export function Btn({
         padding: "12px 20px",
         fontSize: 15,
         cursor: disabled ? "not-allowed" : "pointer",
-        transition: "opacity 0.15s, transform 0.1s",
+        transition: "opacity 0.15s",
         opacity: disabled ? 0.4 : hov ? 0.88 : 1,
-        transform: hov && !disabled ? "translateY(-1px)" : "none",
         fontFamily: "inherit",
         letterSpacing: "0.01em",
         ...base,
@@ -155,49 +162,5 @@ export function Btn({
     >
       {children}
     </button>
-  );
-}
-
-// KPI card
-export function KpiCard({
-  label,
-  value,
-  accentColor,
-}: {
-  label: string;
-  value: string | number;
-  accentColor: string;
-}) {
-  return (
-    <div
-      style={{
-        ...baseCard,
-        padding: "18px 20px",
-        borderTop: `2px solid ${accentColor}`,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: C.text2,
-          textTransform: "uppercase",
-          letterSpacing: "0.07em",
-          marginBottom: 10,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 800,
-          color: C.text,
-          letterSpacing: "-0.03em",
-        }}
-      >
-        {value}
-      </div>
-    </div>
   );
 }

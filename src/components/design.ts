@@ -1,28 +1,28 @@
 import type { CSSProperties } from "react";
 
 export const C = {
-  bg: "#0b0b12",
-  surface: "#14141e",
-  card: "#1c1c2a",
-  border: "rgba(255,255,255,0.07)",
-  border2: "rgba(255,255,255,0.13)",
-  accent: "#7c6dfa",
-  accentHi: "#9f94fb",
-  accentLo: "rgba(124,109,250,0.15)",
-  green: "#4ade80",
-  greenLo: "rgba(74,222,128,0.12)",
-  red: "#f87171",
-  redLo: "rgba(248,113,113,0.12)",
+  bg: "var(--bg-app)",
+  surface: "var(--bg-surface)",
+  card: "var(--bg-panel)",
+  border: "var(--border-subtle)",
+  border2: "var(--border-control)",
+  accent: "var(--accent)",
+  accentHi: "var(--accent-strong)",
+  accentLo: "var(--accent-soft)",
+  green: "var(--positive)",
+  greenLo: "var(--positive-soft)",
+  red: "var(--negative)",
+  redLo: "var(--negative-soft)",
   yellow: "#fbbf24",
-  text: "#f0f0f8",
-  text2: "#8888a8",
-  text3: "#44445a",
+  text: "var(--text-primary)",
+  text2: "var(--text-muted)",
+  text3: "var(--text-subtle)",
 };
 
 export const baseCard: CSSProperties = {
   background: C.card,
   border: `1px solid ${C.border}`,
-  borderRadius: 20,
+  borderRadius: 14,
 };
 
 export const baseInput: CSSProperties = {

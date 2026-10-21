@@ -4,7 +4,9 @@ import {
   avatarColors,
   buildSplitDebts,
   computeDebtBetween,
+  computeGroupPendingTotals,
   computeMutualDebt,
+  computePersonalBalances,
   computeSummaries,
   currencySymbol,
   fmt,
@@ -112,6 +114,77 @@ describe("computeDebtBetween", () => {
   it("returns remaining unpaid debt for a debtor and lender pair", () => {
     expect(computeDebtBetween("ana", "luis", baseGroup.debts)).toBe(7500);
     expect(computeDebtBetween("luis", "ana", baseGroup.debts)).toBe(0);
+  });
+});
+
+describe("currency-safe balance summaries", () => {
+  it("keeps personal balances separated by currency", () => {
+    const group: Group = {
+      ...baseGroup,
+      members: baseGroup.members.map((member) =>
+        member.id === "ana" ? { ...member, userId: "ana-user" } : member,
+      ),
+      debts: [
+        baseGroup.debts[0],
+        {
+          ...baseGroup.debts[0],
+          id: "usd-receivable",
+          debtorId: "luis",
+          lenderId: "ana",
+          amount: 12,
+          paidAmount: 2,
+          currency: "USD",
+        },
+      ],
+    };
+
+    expect(computePersonalBalances(group, "ana")).toEqual([
+      { currency: "CRC", owes: 7500, isOwed: 0, net: -7500 },
+      { currency: "USD", owes: 0, isOwed: 10, net: 10 },
+    ]);
+  });
+
+  it("returns normalized zero and never a negative zero", () => {
+    const balancedGroup: Group = {
+      ...baseGroup,
+      debts: [
+        { ...baseGroup.debts[0], amount: 5000, paidAmount: 0 },
+        {
+          ...baseGroup.debts[0],
+          id: "reverse",
+          debtorId: "luis",
+          lenderId: "ana",
+          amount: 5000,
+          paidAmount: 0,
+        },
+      ],
+    };
+
+    const [balance] = computePersonalBalances(balancedGroup, "ana");
+    expect(balance.net).toBe(0);
+    expect(Object.is(balance.net, -0)).toBe(false);
+    expect(fmt(-0)).toBe("0");
+  });
+
+  it("reports group pending totals per currency", () => {
+    const mixedCurrencyGroup: Group = {
+      ...baseGroup,
+      debts: [
+        baseGroup.debts[0],
+        {
+          ...baseGroup.debts[0],
+          id: "usd",
+          amount: 14,
+          paidAmount: 2,
+          currency: "USD",
+        },
+      ],
+    };
+
+    expect(computeGroupPendingTotals(mixedCurrencyGroup)).toEqual([
+      { currency: "CRC", amount: 7500 },
+      { currency: "USD", amount: 12 },
+    ]);
   });
 });
 

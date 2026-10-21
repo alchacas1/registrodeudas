@@ -25,6 +25,66 @@ export function computeSummaries(group: Group): DebtSummary[] {
   return Object.values(sums);
 }
 
+export interface CurrencyAmount {
+  currency: string;
+  amount: number;
+}
+
+export interface PersonalCurrencyBalance {
+  currency: string;
+  owes: number;
+  isOwed: number;
+  net: number;
+}
+
+function remainingDebt(debt: Debt): number {
+  return Math.max(0, debt.amount - debt.paidAmount);
+}
+
+export function computeGroupPendingTotals(group: Group): CurrencyAmount[] {
+  const totals = new Map<string, number>();
+
+  for (const debt of group.debts) {
+    if (debt.status === "pagada") continue;
+    const remaining = remainingDebt(debt);
+    if (remaining === 0) continue;
+    totals.set(debt.currency, (totals.get(debt.currency) ?? 0) + remaining);
+  }
+
+  return [...totals].map(([currency, amount]) => ({ currency, amount }));
+}
+
+export function computePersonalBalances(
+  group: Group,
+  memberId: string | undefined,
+): PersonalCurrencyBalance[] {
+  if (!memberId) return [];
+
+  const balances = new Map<string, { owes: number; isOwed: number }>();
+  for (const debt of group.debts) {
+    if (debt.status === "pagada") continue;
+    const remaining = remainingDebt(debt);
+    if (remaining === 0) continue;
+
+    if (debt.debtorId === memberId || debt.lenderId === memberId) {
+      const balance = balances.get(debt.currency) ?? { owes: 0, isOwed: 0 };
+      if (debt.debtorId === memberId) balance.owes += remaining;
+      if (debt.lenderId === memberId) balance.isOwed += remaining;
+      balances.set(debt.currency, balance);
+    }
+  }
+
+  return [...balances].map(([currency, balance]) => {
+    const net = balance.isOwed - balance.owes;
+    return {
+      currency,
+      owes: balance.owes,
+      isOwed: balance.isOwed,
+      net: net === 0 ? 0 : net,
+    };
+  });
+}
+
 export function computeDebtBetween(
   debtorId: string,
   lenderId: string,
@@ -124,7 +184,8 @@ export function currencySymbol(currency: string): string {
 }
 
 export function fmt(value: number): string {
-  return value.toLocaleString("es-CR", {
+  const normalized = value === 0 ? 0 : value;
+  return normalized.toLocaleString("es-CR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });

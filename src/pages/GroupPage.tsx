@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Debt, Group } from "../types";
 import { useCurrentUser, signOut } from "../lib/auth";
@@ -11,14 +11,15 @@ import {
 import {
   buildSplitDebts,
   computeDebtBetween,
+  computeGroupPendingTotals,
   computeMutualDebt,
-  computeSummaries,
+  computePersonalBalances,
   currencySymbol,
   fmt,
   formatCreatedAt,
 } from "../lib/utils";
 import { baseCard, C } from "../components/design";
-import { Avatar, Btn, Input, KpiCard, StyledSelect } from "../components/ui";
+import { Avatar, Btn, Input, StyledSelect } from "../components/ui";
 import versionInfo from "../data/version.json";
 
 interface DebtAmountByCurrency {
@@ -155,7 +156,7 @@ function BalanceBreakdown({
         aria-label={totalLabel}
         style={{
           borderRadius: 14,
-          border: `1px solid ${accentColor}40`,
+          border: `1px solid ${C.border}`,
           background: accentBackground,
           padding: 16,
         }}
@@ -268,7 +269,7 @@ function PersonalBalanceCard({
       onClick={(event) => onClick(event.currentTarget)}
       style={{
         background: accentBackground,
-        border: `1px solid ${accentColor}4d`,
+        border: `1px solid ${C.border2}`,
         borderRadius: 14,
         color: C.text,
         cursor: "pointer",
@@ -341,6 +342,11 @@ export function GroupPage() {
   const [debtCurrency, setDebtCurrency] = useState("CRC");
   const [debtReason, setDebtReason] = useState("");
   const [addingDebt, setAddingDebt] = useState(false);
+  const [debtError, setDebtError] = useState("");
+  const [debtFilter, setDebtFilter] = useState<"all" | "owed" | "owing">(
+    "all",
+  );
+  const [expandedDebtId, setExpandedDebtId] = useState<string | null>(null);
 
   const [splitAmount, setSplitAmount] = useState("");
   const [splitCurrency, setSplitCurrency] = useState("CRC");
@@ -367,6 +373,7 @@ export function GroupPage() {
   const [paymentError, setPaymentError] = useState("");
   const [activeDialog, setActiveDialog] = useState<
     | "invite"
+    | "newDebt"
     | "search"
     | "split"
     | "summary"
@@ -374,8 +381,83 @@ export function GroupPage() {
     | "payment"
     | null
   >(null);
-  const debtFormRef = useRef<HTMLDivElement | null>(null);
   const dialogTriggerRef = useRef<HTMLElement | null>(null);
+  const dialogPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const resetDebtForm = useCallback(() => {
+    setDebtDebtor("");
+    setDebtLender("");
+    setDebtAmount("");
+    setDebtCurrency("CRC");
+    setDebtReason("");
+    setDebtError("");
+  }, []);
+
+  const resetSplitForm = useCallback(() => {
+    setSplitAmount("");
+    setSplitCurrency("CRC");
+    setSplitLender("");
+    setSplitExcludeLender(false);
+    setSplitDebtors([]);
+    setSplitReason("");
+    setSplitError("");
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    if (addingMember || savingSplit || payingId || addingDebt) return;
+    const hasDebtChanges = Boolean(
+      debtDebtor ||
+        debtLender ||
+        debtAmount ||
+        debtCurrency !== "CRC" ||
+        debtReason.trim(),
+    );
+    const hasSplitChanges = Boolean(
+      splitAmount ||
+        splitCurrency !== "CRC" ||
+        splitLender ||
+        splitDebtors.length ||
+        splitReason.trim() ||
+        splitExcludeLender,
+    );
+    const isDebtFlow = activeDialog === "newDebt" || activeDialog === "split";
+    if (
+      isDebtFlow &&
+      (hasDebtChanges || hasSplitChanges) &&
+      !window.confirm("¿Descartar los cambios sin guardar?")
+    ) {
+      return;
+    }
+    if (isDebtFlow) {
+      resetDebtForm();
+      resetSplitForm();
+    }
+    setActiveDialog(null);
+    setPaymentDebt(null);
+    setPaymentAmount("");
+    setPaymentError("");
+    setDebtError("");
+    dialogTriggerRef.current?.focus();
+  }, [
+    activeDialog,
+    addingDebt,
+    addingMember,
+    debtAmount,
+    debtCurrency,
+    debtDebtor,
+    debtLender,
+    debtReason,
+    payingId,
+    resetDebtForm,
+    resetSplitForm,
+    savingSplit,
+    splitAmount,
+    splitCurrency,
+    splitDebtors.length,
+    splitExcludeLender,
+    splitLender,
+    splitReason,
+  ]);
 
   const refetch = async () => {
     if (!id) return;
@@ -427,19 +509,50 @@ export function GroupPage() {
   useEffect(() => {
     if (!activeDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !addingMember && !savingSplit && !payingId) {
-        setActiveDialog(null);
-        dialogTriggerRef.current?.focus();
+      if (event.key === "Escape" && !addingMember && !savingSplit && !payingId && !addingDebt) {
+        closeDialog();
+      }
+      if (event.key === "Tab") {
+        const controls = dialogPanelRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
+    window.requestAnimationFrame(() => {
+      const panel = dialogPanelRef.current;
+      const initialControl =
+        panel?.querySelector<HTMLElement>("[data-dialog-initial-focus]") ??
+        panel?.querySelector<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([data-dialog-close])',
+        ) ??
+        panel?.querySelector<HTMLElement>('button:not([disabled])');
+      initialControl?.focus();
+    });
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeDialog, addingMember, savingSplit, payingId]);
+  }, [
+    activeDialog,
+    addingDebt,
+    addingMember,
+    closeDialog,
+    payingId,
+    savingSplit,
+  ]);
 
   const pageStyle: CSSProperties = {
     minHeight: "100vh",
@@ -506,12 +619,7 @@ export function GroupPage() {
   );
 }
 
-  const summaries = computeSummaries(group);
   const activeDebts = group.debts.filter((d) => d.status !== "pagada");
-  const totalOwes = summaries.reduce((s, x) => s + x.owes, 0);
-  const totalIsOwed = summaries.reduce((s, x) => s + x.isOwed, 0);
-  const totalNet = totalIsOwed - totalOwes;
-
   const myMember = user
     ? group.members.find((m) => m.userId === user.uid)
     : undefined;
@@ -520,6 +628,29 @@ export function GroupPage() {
     group,
     myMember?.id,
   );
+  const personalBalances = computePersonalBalances(group, myMember?.id);
+  const groupPendingTotals = computeGroupPendingTotals(group);
+  const personalBalanceState =
+    personalBalances.length === 0 || personalBalances.every(({ net }) => net === 0)
+      ? "Al día"
+      : personalBalances.every(({ net }) => net <= 0)
+        ? "En contra"
+        : personalBalances.every(({ net }) => net >= 0)
+          ? "A favor"
+          : "Balance por moneda";
+  const filteredDebts = activeDebts
+    .filter((debt) => {
+      if (!myMember || debtFilter === "all") return true;
+      return debtFilter === "owed"
+        ? debt.lenderId === myMember.id
+        : debt.debtorId === myMember.id;
+    })
+    .sort((a, b) => {
+      if (!myMember) return 0;
+      const aRelevant = a.debtorId === myMember.id || a.lenderId === myMember.id;
+      const bRelevant = b.debtorId === myMember.id || b.lenderId === myMember.id;
+      return Number(bRelevant) - Number(aRelevant);
+    });
   const paymentRemaining = paymentDebt
     ? Math.max(0, paymentDebt.amount - paymentDebt.paidAmount)
     : 0;
@@ -573,6 +704,7 @@ export function GroupPage() {
     )
       return;
     setAddingDebt(true);
+    setDebtError("");
     try {
       await dbAddDebt(
         group.id,
@@ -582,14 +714,13 @@ export function GroupPage() {
         debtCurrency,
         debtReason,
       );
-      setDebtDebtor("");
-      setDebtLender("");
-      setDebtAmount("");
-      setDebtReason("");
+      resetDebtForm();
       await refetch();
+      setActiveDialog(null);
+      dialogTriggerRef.current?.focus();
     } catch (err) {
       console.error(err);
-      alert("No se pudo registrar la deuda.");
+      setDebtError("No se pudo registrar la deuda. Intenta nuevamente.");
     } finally {
       setAddingDebt(false);
     }
@@ -616,6 +747,7 @@ export function GroupPage() {
       setActiveDialog(null);
       setPaymentDebt(null);
       setPaymentAmount("");
+      dialogTriggerRef.current?.focus();
     } catch (err) {
       setPaymentError(
         err instanceof Error ? err.message : "No se pudo confirmar el pago.",
@@ -670,16 +802,6 @@ export function GroupPage() {
     );
   };
 
-  const resetSplitForm = () => {
-    setSplitAmount("");
-    setSplitCurrency("CRC");
-    setSplitLender("");
-    setSplitExcludeLender(false);
-    setSplitDebtors([]);
-    setSplitReason("");
-    setSplitError("");
-  };
-
   const saveSplitBill = async () => {
     setSplitError("");
     if (savingSplit) return;
@@ -711,8 +833,10 @@ export function GroupPage() {
         ),
       );
       resetSplitForm();
+      resetDebtForm();
       setActiveDialog(null);
       await refetch();
+      dialogTriggerRef.current?.focus();
     } catch (err) {
       console.error(err);
       setSplitError("No se pudo dividir la cuenta.");
@@ -724,6 +848,7 @@ export function GroupPage() {
   const openDialog = (
     dialog:
       | "invite"
+      | "newDebt"
       | "search"
       | "split"
       | "summary"
@@ -735,29 +860,12 @@ export function GroupPage() {
     setActiveDialog(dialog);
   };
 
-  const closeDialog = () => {
-    if (addingMember || savingSplit || payingId) return;
-    setActiveDialog(null);
-    setPaymentDebt(null);
-    setPaymentAmount("");
-    setPaymentError("");
-    dialogTriggerRef.current?.focus();
-  };
-
   const openPaymentDialog = (debt: Debt, trigger: HTMLElement) => {
     dialogTriggerRef.current = trigger;
     setPaymentDebt(debt);
     setPaymentAmount(String(Math.max(0, debt.amount - debt.paidAmount)));
     setPaymentError("");
     setActiveDialog("payment");
-  };
-
-  const focusDebtForm = () => {
-    debtFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    const firstControl = debtFormRef.current?.querySelector<
-      HTMLSelectElement | HTMLInputElement
-    >("select, input");
-    firstControl?.focus();
   };
 
   return (
@@ -810,25 +918,26 @@ export function GroupPage() {
           Volver
         </button>
 
-        <div className="group-dashboard-topbar-title" style={{ textAlign: "center" }}>
+        <div className="group-dashboard-topbar-title" style={{ textAlign: "left" }}>
           <div
             style={{
-              fontSize: 16,
-              fontWeight: 800,
+              fontSize: 15,
+              fontWeight: 900,
               color: C.text,
-              letterSpacing: "-0.02em",
+              letterSpacing: "0.04em",
             }}
           >
-            {group.name}
+            COMPAS
           </div>
           <div
             style={{
               fontSize: 11,
               color: C.text2,
-              textTransform: "capitalize",
             }}
           >
-            {group.type}
+            <span>{group.name}</span>
+            <span aria-hidden="true"> · </span>
+            <span style={{ textTransform: "capitalize" }}>{group.type}</span>
           </div>
         </div>
 
@@ -882,36 +991,71 @@ export function GroupPage() {
 
       {/* Content */}
       <div className="group-dashboard-shell">
-        {/* KPIs */}
-        <div
-          className="group-dashboard-metrics"
-          style={{
-            display: "grid",
-            gap: 14,
-            marginBottom: 26,
-          }}
-        >
-          <KpiCard
-            label="Miembros"
-            value={group.members.length}
-            accentColor={C.text3}
-          />
-          <KpiCard
-            label="Deudas activas"
-            value={activeDebts.length}
-            accentColor={C.yellow}
-          />
-          <KpiCard
-            label="Total pendiente"
-            value={`₡${fmt(totalOwes)}`}
-            accentColor={C.red}
-          />
-          <KpiCard
-            label="Saldo neto"
-            value={`${totalNet < 0 ? "-" : ""}₡${fmt(Math.abs(totalNet))}`}
-            accentColor={totalNet >= 0 ? C.green : C.red}
-          />
-        </div>
+        <section className="group-balance" role="region" aria-label="Tu balance">
+          <div className="group-balance-main">
+            <div className="group-eyebrow">Tu balance</div>
+            <div
+              className="group-balance-state"
+              data-tone={
+                personalBalanceState === "A favor"
+                  ? "positive"
+                  : personalBalanceState === "En contra"
+                    ? "negative"
+                    : "neutral"
+              }
+            >
+              {myMember ? personalBalanceState : "Vincula tu cuenta"}
+            </div>
+            <div className="group-balance-values">
+              {(personalBalances.length > 0
+                ? personalBalances
+                : [{ currency: "CRC", owes: 0, isOwed: 0, net: 0 }]
+              ).map(({ currency, net }) => (
+                <div key={currency} className="group-balance-value">
+                  {net > 0 ? "+" : net < 0 ? "−" : ""}
+                  {currencySymbol(currency)}{fmt(Math.abs(net))} {currency}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="group-balance-actions"
+            role="region"
+            aria-label="Mis saldos"
+          >
+            <PersonalBalanceCard
+              label="Mi deuda"
+              totals={myDebtBreakdown.totals}
+              accentColor={C.red}
+              accentBackground="transparent"
+              onClick={(trigger) => openDialog("summary", trigger)}
+            />
+            <PersonalBalanceCard
+              label="Me deben"
+              totals={myReceivableBreakdown.totals}
+              accentColor={C.green}
+              accentBackground="transparent"
+              onClick={(trigger) => openDialog("receivables", trigger)}
+            />
+          </div>
+        </section>
+
+        <section className="group-balance-meta" aria-label="Resumen del grupo">
+            <span>{group.members.length} miembros</span>
+            <span>{activeDebts.length} deudas activas</span>
+            <span className="group-balance-pending">
+              <strong>Pendiente del grupo:</strong>{" "}
+              {groupPendingTotals.length > 0
+                ? groupPendingTotals.map(({ currency, amount }, index) => (
+                    <span key={currency}>
+                      {index > 0 ? " · " : ""}
+                      {currencySymbol(currency)}{fmt(amount)} {currency}
+                    </span>
+                  ))
+                : "Sin pendientes"}
+            </span>
+        </section>
 
         {/* Two-col layout */}
         <div
@@ -927,31 +1071,79 @@ export function GroupPage() {
             {/* Active debts */}
             <div style={{ ...baseCard, padding: 24 }}>
               <div
+                className="group-debts-heading"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   marginBottom: 18,
+                  gap: 12,
                 }}
               >
-                <div style={{ fontSize: 17, fontWeight: 800 }}>
-                  Deudas Activas
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 850 }}>Deudas</div>
+                  <div style={{ color: C.text2, fontSize: 12, marginTop: 3 }}>
+                    {filteredDebts.length} de {activeDebts.length} activas
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: C.text2,
-                    fontWeight: 600,
-                    background: C.surface,
-                    borderRadius: 20,
-                    padding: "3px 12px",
-                  }}
-                >
-                  {activeDebts.length}
+                <div className="group-debts-primary-actions">
+                  <button
+                    type="button"
+                    className="group-secondary-button"
+                    onClick={(event) => openDialog("search", event.currentTarget)}
+                  >
+                    Buscar deuda
+                  </button>
+                  <button
+                    type="button"
+                    className="group-primary-button"
+                    onClick={(event) => openDialog("newDebt", event.currentTarget)}
+                  >
+                    + Nueva deuda
+                  </button>
                 </div>
               </div>
 
-              {activeDebts.length === 0 ? (
+              <div className="group-debt-toolbar">
+                <div className="group-debt-filters" aria-label="Filtros de deuda">
+                  <button
+                    type="button"
+                    aria-pressed={debtFilter === "all"}
+                    onClick={() => setDebtFilter("all")}
+                  >
+                    Todas
+                  </button>
+                  {myMember && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Filtrar: Me deben"
+                        aria-pressed={debtFilter === "owed"}
+                        onClick={() => setDebtFilter("owed")}
+                      >
+                        Me deben
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Filtrar: Debo"
+                        aria-pressed={debtFilter === "owing"}
+                        onClick={() => setDebtFilter("owing")}
+                      >
+                        Debo
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="group-text-button"
+                  onClick={(event) => openDialog("invite", event.currentTarget)}
+                >
+                  Invitar miembro
+                </button>
+              </div>
+
+              {filteredDebts.length === 0 ? (
                 <div
                   style={{
                     textAlign: "center",
@@ -959,18 +1151,22 @@ export function GroupPage() {
                     color: C.text3,
                   }}
                 >
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+                  <div aria-hidden="true" style={{ fontSize: 24, marginBottom: 12 }}>✓</div>
                   <div
                     style={{ fontWeight: 700, color: C.text2, marginBottom: 4 }}
                   >
-                    Sin deudas pendientes
+                    {activeDebts.length === 0
+                      ? "Sin deudas pendientes"
+                      : "No hay deudas en este filtro"}
                   </div>
                   <div style={{ fontSize: 13 }}>
-                    Todos los pagos están al día
+                    {activeDebts.length === 0
+                      ? "Todos los pagos están al día"
+                      : "Prueba con otra vista de la lista."}
                   </div>
                   <button
                     type="button"
-                    onClick={focusDebtForm}
+                    onClick={(event) => openDialog("newDebt", event.currentTarget)}
                     style={{
                       marginTop: 18,
                       minHeight: 44,
@@ -984,14 +1180,14 @@ export function GroupPage() {
                       cursor: "pointer",
                     }}
                   >
-                    Registrar primera deuda
+                    + Nueva deuda
                   </button>
                 </div>
               ) : (
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 10 }}
                 >
-                  {activeDebts.map((d) => {
+                  {filteredDebts.map((d) => {
                     const debtor = group.members.find(
                       (m) => m.id === d.debtorId,
                     );
@@ -1005,11 +1201,8 @@ export function GroupPage() {
                         className="group-dashboard-debt-card"
                         key={d.id}
                         style={{
-                          background: C.surface,
-                          border: `1px solid ${C.border}`,
-                          borderLeft: `3px solid ${C.red}`,
-                          borderRadius: 12,
-                          padding: "14px 16px",
+                          borderBottom: `1px solid ${C.border}`,
+                          padding: "16px 4px",
                           display: "flex",
                           alignItems: "center",
                           gap: 14,
@@ -1071,6 +1264,55 @@ export function GroupPage() {
                           >
                             {formatCreatedAt(d.createdAt)}
                           </div>
+                          <div
+                            style={{
+                              alignItems: "center",
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              marginTop: 8,
+                            }}
+                          >
+                            <span className="group-status-badge">
+                              {d.status === "parcial" ? "Abono registrado" : "Pendiente"}
+                            </span>
+                            <button
+                              type="button"
+                              className="group-text-button"
+                              aria-expanded={expandedDebtId === d.id}
+                              aria-controls={`debt-detail-${d.id}`}
+                              aria-label={`Ver detalle de ${d.reason || `${debtor?.name} a ${lender?.name}`}`}
+                              onClick={() =>
+                                setExpandedDebtId((current) =>
+                                  current === d.id ? null : d.id,
+                                )
+                              }
+                            >
+                              {expandedDebtId === d.id ? "Ocultar detalle" : "Ver detalle"}
+                            </button>
+                          </div>
+                          {expandedDebtId === d.id && (
+                            <div
+                              id={`debt-detail-${d.id}`}
+                              className="group-debt-detail"
+                            >
+                              <span>
+                                <strong>Monto original</strong>{" "}
+                                {sym}{fmt(d.amount)} {d.currency}
+                              </span>
+                              {d.paidAmount > 0 && (
+                                <span>
+                                  <strong>Pagado</strong>{" "}
+                                  {sym}{fmt(d.paidAmount)} {d.currency}
+                                </span>
+                              )}
+                              <span>
+                                {canConfirm(d)
+                                  ? "Puedes registrar un pago recibido."
+                                  : `Pendiente de confirmación de ${lender?.name ?? "la persona acreedora"}`}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div
                           className="group-dashboard-debt-amount"
@@ -1138,539 +1380,8 @@ export function GroupPage() {
               )}
             </div>
 
-            {/* Balances */}
-            <div
-              role="region"
-              aria-label="Mis saldos"
-              style={{ ...baseCard, padding: 24 }}
-            >
-              <div
-                className="group-dashboard-balance-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <PersonalBalanceCard
-                  label="Mi deuda"
-                  totals={myDebtBreakdown.totals}
-                  accentColor={C.red}
-                  accentBackground={C.redLo}
-                  onClick={(trigger) => openDialog("summary", trigger)}
-                />
-                <PersonalBalanceCard
-                  label="Me deben"
-                  totals={myReceivableBreakdown.totals}
-                  accentColor={C.green}
-                  accentBackground={C.greenLo}
-                  onClick={(trigger) => openDialog("receivables", trigger)}
-                />
-              </div>
-              <div
-                style={{
-                  display: "none",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                  gap: 12,
-                }}
-              >
-                {summaries.map((x) => (
-                  <div
-                    key={x.memberId}
-                    style={{
-                      background: C.surface,
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 14,
-                      padding: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        marginBottom: 12,
-                      }}
-                    >
-                      <Avatar name={x.memberName} size={36} />
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {x.memberName}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 800,
-                            color:
-                              x.netBalance > 0
-                                ? C.green
-                                : x.netBalance < 0
-                                  ? C.red
-                                  : C.text2,
-                          }}
-                        >
-                          {x.netBalance > 0 ? "+" : ""}
-                          {fmt(x.netBalance)}
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          background: C.bg,
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: C.text3,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                            marginBottom: 3,
-                          }}
-                        >
-                          Debe
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 700,
-                            color: x.owes > 0 ? C.red : C.text3,
-                          }}
-                        >
-                          ₡{fmt(x.owes)}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          background: C.bg,
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: C.text3,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                            marginBottom: 3,
-                          }}
-                        >
-                          Le deben
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 700,
-                            color: x.isOwed > 0 ? C.green : C.text3,
-                          }}
-                        >
-                        ₡{fmt(x.isOwed)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Net total banner */}
-            <div
-              style={{
-                ...baseCard,
-                display: "none",
-                padding: "32px",
-                textAlign: "center",
-                borderColor:
-                  totalNet >= 0
-                    ? "rgba(74,222,128,0.2)"
-                    : "rgba(248,113,113,0.2)",
-                background: `linear-gradient(135deg, ${C.card}, ${totalNet >= 0 ? "rgba(74,222,128,0.05)" : "rgba(248,113,113,0.05)"})`,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: C.text2,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: 10,
-                }}
-              >
-                Saldo Neto Total
-              </div>
-              <div
-                style={{
-                  fontSize: 56,
-                  fontWeight: 900,
-                  letterSpacing: "-0.05em",
-                  color: totalNet >= 0 ? C.green : C.red,
-                  lineHeight: 1,
-                }}
-              >
-                {totalNet < 0 ? "-" : ""}₡{fmt(Math.abs(totalNet))}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: 40,
-                  marginTop: 24,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: C.text3,
-                      marginBottom: 4,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Debes
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: C.red }}>
-                    ₡{fmt(totalOwes)}
-                  </div>
-                </div>
-                <div style={{ width: 1, background: C.border }} />
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: C.text3,
-                      marginBottom: 4,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Te deben
-                  </div>
-                  <div
-                    style={{ fontSize: 22, fontWeight: 800, color: C.green }}
-                  >
-                    ₡{fmt(totalIsOwed)}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Sidebar */}
-          <div
-            className="group-dashboard-sidebar"
-            style={{ display: "flex", flexDirection: "column", gap: 16 }}
-          >
-            {/* Add member */}
-            <div style={{ ...baseCard, padding: 22, display: "none" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
-                Agregar Miembro
-              </div>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                <Input
-                  value={memberName}
-                  onChange={setMemberName}
-                  placeholder="Nombre"
-                />
-                <Input
-                  value={memberEmail}
-                  onChange={setMemberEmail}
-                  placeholder="Correo del miembro"
-                />
-                <Btn
-                  onClick={addMember}
-                  disabled={
-                    !memberName.trim() || !memberEmail.trim() || addingMember
-                  }
-                >
-                  {addingMember ? "Enviando…" : "+ Invitar"}
-                </Btn>
-                {inviteMessage && (
-                  <div style={{ fontSize: 12, color: C.text2 }}>
-                    {inviteMessage}
-                  </div>
-                )}
-              </div>
-              {group.members.length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  {group.members.map((m, i) => (
-                    <div
-                      key={m.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "8px 0",
-                        borderTop: i > 0 ? `1px solid ${C.border}` : "none",
-                      }}
-                    >
-                      <Avatar name={m.name} size={26} />
-                      <span
-                        style={{
-                          fontSize: 13,
-                          color: C.text,
-                          fontWeight: 500,
-                          flex: 1,
-                        }}
-                      >
-                        {m.name}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          color: m.userId ? C.green : C.text3,
-                        }}
-                      >
-                        {m.userId
-                          ? "✓ activo"
-                          : m.email
-                            ? "pendiente"
-                            : "sin correo"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Add debt */}
-            <div ref={debtFormRef} style={{ ...baseCard, padding: 22 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 800 }}>
-                  Registrar Deuda
-                </div>
-                <button
-                  type="button"
-                  onClick={(event) => openDialog("split", event.currentTarget)}
-                  style={{
-                    minHeight: 36,
-                    borderRadius: 10,
-                    border: `1px solid ${C.border2}`,
-                    background: C.surface,
-                    color: C.text,
-                    fontFamily: "inherit",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    padding: "0 12px",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Dividir cuenta
-                </button>
-              </div>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
-                  ¿Quién debe?
-                </label>
-                <StyledSelect value={debtDebtor} onChange={setDebtDebtor}>
-                  <option value="">¿Quién debe?</option>
-                  {group.members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </StyledSelect>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
-                  ¿A quién le deben?
-                </label>
-                <StyledSelect value={debtLender} onChange={setDebtLender}>
-                  <option value="">¿A quién le deben?</option>
-                  {group.members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </StyledSelect>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
-                  Monto
-                </label>
-                <div
-                  className="group-dashboard-control-row"
-                  style={{ display: "flex", gap: 8 }}
-                >
-                  <Input
-                    value={debtAmount}
-                    onChange={setDebtAmount}
-                    placeholder="Monto"
-                    type="number"
-                    style={{ flex: 1 }}
-                  />
-                  <StyledSelect
-                    value={debtCurrency}
-                    onChange={setDebtCurrency}
-                    style={{
-                      width: 70,
-                      flex: "none",
-                      paddingRight: 12,
-                      backgroundImage: "none",
-                    }}
-                  >
-                    <option value="CRC">₡</option>
-                    <option value="USD">$</option>
-                    <option value="EUR">€</option>
-                  </StyledSelect>
-                </div>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
-                  Motivo opcional
-                </label>
-                <Input
-                  value={debtReason}
-                  onChange={setDebtReason}
-                  placeholder="Motivo (opcional)"
-                />
-                <Btn
-                  onClick={addDebt}
-                  disabled={
-                    !debtDebtor ||
-                    !debtLender ||
-                    !debtAmount ||
-                    debtDebtor === debtLender ||
-                    addingDebt
-                  }
-                >
-                  {addingDebt ? "Registrando…" : "+ Registrar"}
-                </Btn>
-              </div>
-            </div>
-
-            <div style={{ ...baseCard, padding: 16 }}>
-              <div style={{ display: "grid", gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={(event) => openDialog("invite", event.currentTarget)}
-                  style={{
-                    minHeight: 44,
-                    borderRadius: 12,
-                    border: `1px solid ${C.border2}`,
-                    background: C.surface,
-                    color: C.text,
-                    fontFamily: "inherit",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Invitar miembro
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => openDialog("search", event.currentTarget)}
-                  style={{
-                    minHeight: 44,
-                    borderRadius: 12,
-                    border: `1px solid ${C.border2}`,
-                    background: "transparent",
-                    color: C.text,
-                    fontFamily: "inherit",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Buscar deuda
-                </button>
-              </div>
-            </div>
-
-            {/* Search */}
-            <div style={{ ...baseCard, padding: 22, display: "none" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14 }}>
-                Buscar Deuda
-              </div>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                <StyledSelect value={searchDebtor} onChange={setSearchDebtor}>
-                  <option value="">Deudor</option>
-                  {group.members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </StyledSelect>
-                <StyledSelect value={searchLender} onChange={setSearchLender}>
-                  <option value="">Prestamista</option>
-                  {group.members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </StyledSelect>
-                <Btn
-                  onClick={doSearch}
-                  disabled={!searchDebtor || !searchLender}
-                  variant="secondary"
-                >
-                  Buscar
-                </Btn>
-                {searchResult !== null && (
-                  <div
-                    style={{
-                      background: searchResult > 0 ? C.redLo : C.greenLo,
-                      border: `1px solid ${searchResult > 0 ? "rgba(248,113,113,0.25)" : "rgba(74,222,128,0.25)"}`,
-                      borderRadius: 12,
-                      padding: "16px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: C.text2,
-                        marginBottom: 6,
-                        fontWeight: 600,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Deuda total
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 26,
-                        fontWeight: 900,
-                        color: searchResult > 0 ? C.red : C.green,
-                      }}
-                    >
-                      ₡{fmt(searchResult)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       <footer className="app-version-footer" aria-label="Versión de la aplicación">
@@ -1693,6 +1404,7 @@ export function GroupPage() {
           }}
         >
           <div
+            ref={dialogPanelRef}
             className="group-dashboard-dialog-panel"
             role="dialog"
             aria-modal="true"
@@ -1720,6 +1432,8 @@ export function GroupPage() {
               >
                 {activeDialog === "invite"
                   ? "Invitar miembro"
+                  : activeDialog === "newDebt"
+                    ? "Nueva deuda"
                   : activeDialog === "split"
                     ? "Dividir cuenta"
                     : activeDialog === "payment"
@@ -1732,10 +1446,11 @@ export function GroupPage() {
               </div>
               <button
                 type="button"
+                data-dialog-close
                 onClick={closeDialog}
                 aria-label="Cerrar dialogo"
                 title="Cerrar"
-                disabled={addingMember || savingSplit || !!payingId}
+                disabled={addingDebt || addingMember || savingSplit || !!payingId}
                 style={{
                   width: 40,
                   height: 40,
@@ -1744,7 +1459,7 @@ export function GroupPage() {
                   background: C.surface,
                   color: C.text2,
                   cursor:
-                    addingMember || savingSplit || payingId
+                    addingDebt || addingMember || savingSplit || payingId
                       ? "not-allowed"
                       : "pointer",
                   fontSize: 20,
@@ -1755,7 +1470,120 @@ export function GroupPage() {
               </button>
             </div>
 
-            {activeDialog === "payment" && paymentDebt ? (
+            {activeDialog === "newDebt" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="group-dialog-mode-switch">
+                  <span>Deuda individual</span>
+                  <button
+                    type="button"
+                    className="group-text-button"
+                    onClick={() => setActiveDialog("split")}
+                  >
+                    Dividir cuenta
+                  </button>
+                </div>
+
+                <label htmlFor="new-debt-debtor" className="group-field-label">
+                  ¿Quién debe?
+                </label>
+                <StyledSelect
+                  id="new-debt-debtor"
+                  value={debtDebtor}
+                  onChange={(value) => {
+                    setDebtDebtor(value);
+                    setDebtError("");
+                  }}
+                  autoFocus
+                >
+                  <option value="">Selecciona una persona</option>
+                  {group.members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+
+                <label htmlFor="new-debt-lender" className="group-field-label">
+                  ¿A quién le deben?
+                </label>
+                <StyledSelect
+                  id="new-debt-lender"
+                  value={debtLender}
+                  onChange={(value) => {
+                    setDebtLender(value);
+                    setDebtError("");
+                  }}
+                >
+                  <option value="">Selecciona una persona</option>
+                  {group.members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </StyledSelect>
+
+                <label htmlFor="new-debt-amount" className="group-field-label">
+                  Monto
+                </label>
+                <div className="group-dashboard-control-row" style={{ display: "flex", gap: 8 }}>
+                  <Input
+                    id="new-debt-amount"
+                    value={debtAmount}
+                    onChange={(value) => {
+                      setDebtAmount(value);
+                      setDebtError("");
+                    }}
+                    placeholder="Monto"
+                    type="number"
+                    style={{ flex: 1 }}
+                  />
+                  <StyledSelect
+                    value={debtCurrency}
+                    onChange={setDebtCurrency}
+                    ariaLabel="Moneda"
+                    style={{ width: 86, flex: "none" }}
+                  >
+                    <option value="CRC">CRC</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </StyledSelect>
+                </div>
+
+                <label htmlFor="new-debt-reason" className="group-field-label">
+                  Motivo opcional
+                </label>
+                <Input
+                  id="new-debt-reason"
+                  value={debtReason}
+                  onChange={setDebtReason}
+                  placeholder="Ej. Cena, taxi o entradas"
+                />
+
+                {debtDebtor && debtDebtor === debtLender && (
+                  <div role="alert" style={{ color: C.red, fontSize: 13 }}>
+                    El deudor y el acreedor deben ser personas distintas.
+                  </div>
+                )}
+                {debtError && (
+                  <div role="alert" style={{ color: C.red, fontSize: 13 }}>
+                    {debtError}
+                  </div>
+                )}
+
+                <Btn
+                  onClick={addDebt}
+                  disabled={
+                    !debtDebtor ||
+                    !debtLender ||
+                    !debtAmount ||
+                    debtDebtor === debtLender ||
+                    addingDebt
+                  }
+                >
+                  {addingDebt ? "Registrando…" : "Registrar deuda"}
+                </Btn>
+              </div>
+            ) : activeDialog === "payment" && paymentDebt ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div
                   style={{
@@ -1865,18 +1693,20 @@ export function GroupPage() {
               />
             ) : activeDialog === "invite" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="invite-member-name" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Nombre
                 </label>
                 <Input
+                  id="invite-member-name"
                   value={memberName}
                   onChange={setMemberName}
                   placeholder="Nombre"
                 />
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="invite-member-email" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Correo
                 </label>
                 <Input
+                  id="invite-member-email"
                   value={memberEmail}
                   onChange={setMemberEmail}
                   placeholder="Correo del miembro"
@@ -1897,7 +1727,7 @@ export function GroupPage() {
               </div>
             ) : activeDialog === "split" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="split-total" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Monto total
                 </label>
                 <div
@@ -1905,6 +1735,7 @@ export function GroupPage() {
                   style={{ display: "flex", gap: 8 }}
                 >
                   <Input
+                    id="split-total"
                     value={splitAmount}
                     onChange={setSplitAmount}
                     placeholder="Monto"
@@ -1914,6 +1745,7 @@ export function GroupPage() {
                   <StyledSelect
                     value={splitCurrency}
                     onChange={setSplitCurrency}
+                    ariaLabel="Moneda"
                     style={{
                       width: 78,
                       flex: "none",
@@ -1927,7 +1759,7 @@ export function GroupPage() {
                   </StyledSelect>
                 </div>
 
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="split-lender" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Prestamista
                 </label>
                 <div
@@ -1935,6 +1767,7 @@ export function GroupPage() {
                   style={{ display: "flex", gap: 10, alignItems: "center" }}
                 >
                   <StyledSelect
+                    id="split-lender"
                     value={splitLender}
                     onChange={(value) => {
                       setSplitLender(value);
@@ -2018,10 +1851,11 @@ export function GroupPage() {
                   })}
                 </div>
 
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="split-reason" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Motivo opcional
                 </label>
                 <Input
+                  id="split-reason"
                   value={splitReason}
                   onChange={setSplitReason}
                   placeholder="Ej. Cena, super, viaje"
@@ -2074,10 +1908,10 @@ export function GroupPage() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="search-debtor" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Deudor
                 </label>
-                <StyledSelect value={searchDebtor} onChange={setSearchDebtor}>
+                <StyledSelect id="search-debtor" value={searchDebtor} onChange={setSearchDebtor}>
                   <option value="">Deudor</option>
                   {group.members.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -2085,10 +1919,10 @@ export function GroupPage() {
                     </option>
                   ))}
                 </StyledSelect>
-                <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                <label htmlFor="search-lender" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Prestamista
                 </label>
-                <StyledSelect value={searchLender} onChange={setSearchLender}>
+                <StyledSelect id="search-lender" value={searchLender} onChange={setSearchLender}>
                   <option value="">Prestamista</option>
                   {group.members.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -2148,10 +1982,11 @@ export function GroupPage() {
                     misma moneda.
                   </div>
 
-                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  <label htmlFor="compare-person-a" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                     Persona A
                   </label>
                   <StyledSelect
+                    id="compare-person-a"
                     value={comparePersonA}
                     onChange={(value) => {
                       setComparePersonA(value);
@@ -2166,10 +2001,11 @@ export function GroupPage() {
                     ))}
                   </StyledSelect>
 
-                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  <label htmlFor="compare-person-b" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                     Persona B
                   </label>
                   <StyledSelect
+                    id="compare-person-b"
                     value={comparePersonB}
                     onChange={(value) => {
                       setComparePersonB(value);
@@ -2184,10 +2020,11 @@ export function GroupPage() {
                     ))}
                   </StyledSelect>
 
-                  <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
+                  <label htmlFor="compare-currency" style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                     Moneda
                   </label>
                   <StyledSelect
+                    id="compare-currency"
                     value={compareCurrency}
                     onChange={(value) => {
                       setCompareCurrency(value);

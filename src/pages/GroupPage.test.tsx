@@ -6,13 +6,14 @@ import type { Group } from "../types";
 import { GroupPage } from "./GroupPage";
 
 const getFullGroup = vi.hoisted(() => vi.fn());
+const addDebt = vi.hoisted(() => vi.fn());
 const recordDebtPayment = vi.hoisted(() => vi.fn());
 const authState = vi.hoisted(() => ({
   user: null as { uid: string } | null,
 }));
 
 vi.mock("../lib/db", () => ({
-  addDebt: vi.fn(),
+  addDebt,
   addMember: vi.fn(),
   getFullGroup,
   recordDebtPayment,
@@ -67,6 +68,7 @@ describe("GroupPage debt cards", () => {
     group.members[1].userId = undefined;
     getFullGroup.mockReset();
     getFullGroup.mockResolvedValue(group);
+    addDebt.mockReset().mockResolvedValue(undefined);
     recordDebtPayment.mockReset().mockResolvedValue(undefined);
   });
 
@@ -369,5 +371,164 @@ describe("GroupPage debt cards", () => {
 
     expect(within(dialog).getByText("Anders1 debe a Alvaro")).toBeTruthy();
     expect(within(dialog).getByText(/3(?:[.\s\u00a0])560/)).toBeTruthy();
+  });
+
+  it("centers the dashboard on a compact personal balance and explicit group metadata", async () => {
+    authState.user = { uid: "debtor-user" };
+    getFullGroup.mockResolvedValue({
+      ...group,
+      members: [
+        { ...group.members[0], userId: "debtor-user" },
+        group.members[1],
+      ],
+      debts: [
+        group.debts[0],
+        {
+          ...group.debts[0],
+          id: "usd-debt",
+          amount: 12,
+          currency: "USD",
+        },
+      ],
+    });
+
+    renderGroupPage();
+
+    expect(await screen.findByText("COMPAS")).toBeTruthy();
+    expect(screen.getByText("Viaje")).toBeTruthy();
+    const balance = screen.getByRole("region", { name: "Tu balance" });
+    expect(within(balance).getByText("En contra")).toBeTruthy();
+    expect(within(balance).getByText(/4(?:[.\s\u00a0])560 CRC/)).toBeTruthy();
+    expect(within(balance).getByText(/12 USD/)).toBeTruthy();
+    const groupSummary = screen.getByRole("region", { name: "Resumen del grupo" });
+    expect(within(groupSummary).getByText("2 miembros")).toBeTruthy();
+    expect(within(groupSummary).getByText("2 deudas activas")).toBeTruthy();
+    expect(within(groupSummary).getByText(/4(?:[.\s\u00a0])560 CRC/)).toBeTruthy();
+    expect(within(groupSummary).getByText(/12 USD/)).toBeTruthy();
+  });
+
+  it("opens the normal debt form from the primary action instead of showing it permanently", async () => {
+    renderGroupPage();
+
+    expect(await screen.findByRole("button", { name: "+ Nueva deuda" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Nueva deuda" })).toBeNull();
+    expect(screen.queryByLabelText("¿Quién debe?")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Nueva deuda" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Nueva deuda" });
+    expect(within(dialog).getByLabelText("¿Quién debe?")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Dividir cuenta" })).toBeTruthy();
+  });
+
+  it("moves focus to the first useful field when the new debt modal opens", async () => {
+    renderGroupPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ Nueva deuda" }));
+
+    const debtorSelect = screen.getByLabelText("¿Quién debe?");
+    await waitFor(() => expect(document.activeElement).toBe(debtorSelect));
+  });
+
+  it("registers a normal debt through the modal with the existing database contract", async () => {
+    renderGroupPage();
+    fireEvent.click(await screen.findByRole("button", { name: "+ Nueva deuda" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Nueva deuda" });
+    fireEvent.change(within(dialog).getByLabelText("¿Quién debe?"), {
+      target: { value: "debtor" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("¿A quién le deben?"), {
+      target: { value: "lender" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Monto"), {
+      target: { value: "3200" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Motivo opcional"), {
+      target: { value: "Entradas" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Registrar deuda" }));
+
+    await waitFor(() =>
+      expect(addDebt).toHaveBeenCalledWith(
+        "group-1",
+        "debtor",
+        "lender",
+        3200,
+        "CRC",
+        "Entradas",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Nueva deuda" })).toBeNull(),
+    );
+  });
+
+  it("asks before discarding changes from the new debt modal", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderGroupPage();
+    fireEvent.click(await screen.findByRole("button", { name: "+ Nueva deuda" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Nueva deuda" });
+    fireEvent.change(within(dialog).getByLabelText("Monto"), {
+      target: { value: "500" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar dialogo" }));
+    expect(screen.getByRole("dialog", { name: "Nueva deuda" })).toBeTruthy();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar dialogo" }));
+    expect(screen.queryByRole("dialog", { name: "Nueva deuda" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Nueva deuda" }));
+    expect((screen.getByLabelText("Monto") as HTMLInputElement).value).toBe("");
+    confirm.mockRestore();
+  });
+
+  it("filters the debt list for the signed-in member", async () => {
+    authState.user = { uid: "debtor-user" };
+    getFullGroup.mockResolvedValue({
+      ...group,
+      members: [
+        { ...group.members[0], userId: "debtor-user" },
+        group.members[1],
+      ],
+      debts: [
+        group.debts[0],
+        {
+          ...group.debts[0],
+          id: "reverse",
+          debtorId: "lender",
+          lenderId: "debtor",
+          reason: "Taxi de regreso",
+        },
+      ],
+    });
+
+    renderGroupPage();
+    await screen.findByText("CODEX SEPTIEMBRE");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Filtrar: Me deben" }),
+    );
+    expect(screen.queryByText("CODEX SEPTIEMBRE")).toBeNull();
+    expect(screen.getByText("Taxi de regreso")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar: Debo" }));
+    expect(screen.getByText("CODEX SEPTIEMBRE")).toBeTruthy();
+    expect(screen.queryByText("Taxi de regreso")).toBeNull();
+  });
+
+  it("reveals debt details from each compact row", async () => {
+    renderGroupPage();
+
+    const detailButton = await screen.findByRole("button", {
+      name: "Ver detalle de CODEX SEPTIEMBRE",
+    });
+    expect(detailButton.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(detailButton);
+    expect(detailButton.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Monto original")).toBeTruthy();
+    expect(screen.getByText("Pendiente de confirmación de Alvaro")).toBeTruthy();
   });
 });
