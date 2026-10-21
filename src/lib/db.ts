@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 import { sendSignInLinkToEmail } from "firebase/auth";
-import { addDoc, collection, collectionGroup, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, collectionGroup, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, firestore } from "./firebase";
 import { EMAIL_STORAGE_KEY, normalizeEmail } from "./auth-helpers";
 import { generateAccessCode, timestampToIso } from "./db-helpers";
@@ -60,7 +60,37 @@ export async function addDebt(groupId: string, debtorId: string, lenderId: strin
   requireUser(); const createdAt = new Date().toISOString(); const stored = { debtorId, lenderId, amount, currency, reason, date: createdAt.slice(0, 10), status: "pendiente" as const, paidAmount: 0, createdAt: serverTimestamp() };
   const ref = await addDoc(collection(firestore, "groups", groupId, "debts"), stored); return { id: ref.id, debtorId, lenderId, amount, currency, reason, date: createdAt.slice(0, 10), status: "pendiente", paidAmount: 0, createdAt };
 }
-export async function markDebtPaid(groupId: string, debtId: string, amount: number): Promise<Debt> { requireUser(); const ref = doc(firestore, "groups", groupId, "debts", debtId); await updateDoc(ref, { status: "pagada", paidAmount: amount }); const snap = await getDoc(ref); return mapDebt(snap.id, snap.data()!); }
+export async function recordDebtPayment(groupId: string, debtId: string, paymentAmount: number): Promise<Debt> {
+  requireUser();
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    throw new Error("El monto del pago debe ser mayor que cero.");
+  }
+
+  const ref = doc(firestore, "groups", groupId, "debts", debtId);
+  return runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("La deuda ya no existe.");
+
+    const debt = mapDebt(snap.id, snap.data());
+    const remaining = Math.max(0, debt.amount - debt.paidAmount);
+    if (debt.status === "pagada" || remaining === 0) {
+      throw new Error("Esta deuda ya está pagada.");
+    }
+
+    const tolerance = Number.EPSILON * Math.max(1, Math.abs(debt.amount)) * 10;
+    if (paymentAmount > remaining + tolerance) {
+      throw new Error("El pago no puede superar el saldo pendiente.");
+    }
+
+    const completesDebt = paymentAmount >= remaining - tolerance;
+    const paidAmount = completesDebt
+      ? debt.amount
+      : debt.paidAmount + paymentAmount;
+    const status: DebtStatus = completesDebt ? "pagada" : "parcial";
+    tx.update(ref, { status, paidAmount });
+    return { ...debt, status, paidAmount };
+  });
+}
 export async function claimPendingMemberships(user: User) {
   if (!user.email || !user.emailVerified) return;
   const pending = await getDocs(query(collectionGroup(firestore, "members"), where("email", "==", normalizeEmail(user.email)), where("userId", "==", null)));

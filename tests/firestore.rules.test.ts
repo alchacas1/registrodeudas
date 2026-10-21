@@ -89,6 +89,7 @@ describe("Firestore rules", () => {
       await setDoc(doc(db, "groups/group-1/userMemberships/lender-user"), { memberId: "lender" });
       await setDoc(doc(db, "groups/group-1/userMemberships/other-user"), { memberId: "other" });
       await setDoc(doc(db, "groups/group-1/debts/debt-1"), { debtorId: "debtor", lenderId: "lender", amount: 10, status: "pendiente", paidAmount: 0 });
+      await setDoc(doc(db, "groups/group-1/debts/debt-partial"), { debtorId: "debtor", lenderId: "lender", amount: 10, status: "pendiente", paidAmount: 0 });
     });
     const debtor = env.authenticatedContext("debtor-user").firestore();
     await assertFails(updateDoc(doc(debtor, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
@@ -96,6 +97,12 @@ describe("Firestore rules", () => {
     await assertFails(updateDoc(doc(other, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
     const lender = env.authenticatedContext("lender-user").firestore();
     await assertSucceeds(updateDoc(doc(lender, "groups/group-1/debts/debt-1"), { status: "pagada", paidAmount: 10 }));
+    const partialRef = doc(lender, "groups/group-1/debts/debt-partial");
+    await assertSucceeds(updateDoc(partialRef, { status: "parcial", paidAmount: 4 }));
+    await assertFails(updateDoc(partialRef, { status: "parcial", paidAmount: 3 }));
+    await assertFails(updateDoc(partialRef, { status: "pagada", paidAmount: 5 }));
+    await assertFails(updateDoc(partialRef, { status: "pagada", paidAmount: 11 }));
+    await assertSucceeds(updateDoc(partialRef, { status: "pagada", paidAmount: 10 }));
   });
   it("allows a group session to read its claimed group", async () => {
     await env.clearFirestore(); await seedGroupSessionData();

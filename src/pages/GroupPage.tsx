@@ -6,7 +6,7 @@ import {
   addDebt as dbAddDebt,
   addMember as dbAddMember,
   getFullGroup,
-  markDebtPaid as dbMarkDebtPaid,
+  recordDebtPayment as dbRecordDebtPayment,
 } from "../lib/db";
 import {
   buildSplitDebts,
@@ -20,6 +20,53 @@ import {
 import { baseCard, C } from "../components/design";
 import { Avatar, Btn, Input, KpiCard, StyledSelect } from "../components/ui";
 import versionInfo from "../data/version.json";
+
+interface DebtAmountByCurrency {
+  currency: string;
+  amount: number;
+}
+
+interface DebtByLender {
+  lenderId: string;
+  lenderName: string;
+  amounts: DebtAmountByCurrency[];
+}
+
+function computeMemberDebtBreakdown(group: Group, memberId: string | undefined) {
+  const totals = new Map<string, number>();
+  const lenderTotals = new Map<string, Map<string, number>>();
+
+  if (memberId) {
+    for (const debt of group.debts) {
+      if (debt.debtorId !== memberId || debt.status === "pagada") continue;
+      const remaining = Math.max(0, debt.amount - debt.paidAmount);
+      if (remaining === 0) continue;
+
+      totals.set(debt.currency, (totals.get(debt.currency) ?? 0) + remaining);
+      const amounts = lenderTotals.get(debt.lenderId) ?? new Map<string, number>();
+      amounts.set(debt.currency, (amounts.get(debt.currency) ?? 0) + remaining);
+      lenderTotals.set(debt.lenderId, amounts);
+    }
+  }
+
+  const toAmounts = (amounts: Map<string, number>): DebtAmountByCurrency[] =>
+    [...amounts].map(([currency, amount]) => ({ currency, amount }));
+
+  return {
+    totals: toAmounts(totals),
+    lenders: group.members.reduce<DebtByLender[]>((result, member) => {
+      const amounts = lenderTotals.get(member.id);
+      if (amounts) {
+        result.push({
+          lenderId: member.id,
+          lenderName: member.name,
+          amounts: toAmounts(amounts),
+        });
+      }
+      return result;
+    }, []),
+  };
+}
 
 // GROUP PAGE
 export function GroupPage() {
@@ -63,8 +110,11 @@ export function GroupPage() {
   >(null);
   const [copied, setCopied] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const [activeDialog, setActiveDialog] = useState<
-    "invite" | "search" | "split" | null
+    "invite" | "search" | "split" | "summary" | "payment" | null
   >(null);
   const debtFormRef = useRef<HTMLDivElement | null>(null);
   const dialogTriggerRef = useRef<HTMLElement | null>(null);
@@ -119,7 +169,7 @@ export function GroupPage() {
   useEffect(() => {
     if (!activeDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !addingMember && !savingSplit) {
+      if (event.key === "Escape" && !addingMember && !savingSplit && !payingId) {
         setActiveDialog(null);
         dialogTriggerRef.current?.focus();
       }
@@ -131,7 +181,7 @@ export function GroupPage() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeDialog, addingMember, savingSplit]);
+  }, [activeDialog, addingMember, savingSplit, payingId]);
 
   const pageStyle: CSSProperties = {
     minHeight: "100vh",
@@ -207,6 +257,13 @@ export function GroupPage() {
   const myMember = user
     ? group.members.find((m) => m.userId === user.uid)
     : undefined;
+  const myDebtBreakdown = computeMemberDebtBreakdown(group, myMember?.id);
+  const paymentRemaining = paymentDebt
+    ? Math.max(0, paymentDebt.amount - paymentDebt.paidAmount)
+    : 0;
+  const paymentDebtor = paymentDebt
+    ? group.members.find((member) => member.id === paymentDebt.debtorId)
+    : undefined;
   const canConfirm = (d: Debt) =>
     !!myMember && myMember.id === d.lenderId;
 
@@ -276,13 +333,29 @@ export function GroupPage() {
     }
   };
 
-  const markPaid = async (debtId: string, amount: number) => {
-    setPayingId(debtId);
+  const submitPayment = async () => {
+    if (!paymentDebt || payingId) return;
+    const amount = Number(paymentAmount);
+    const remaining = Math.max(0, paymentDebt.amount - paymentDebt.paidAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentError("Ingresa un monto mayor que cero.");
+      return;
+    }
+    if (amount > remaining) {
+      setPaymentError("El pago no puede superar el saldo pendiente.");
+      return;
+    }
+
+    setPayingId(paymentDebt.id);
+    setPaymentError("");
     try {
-      await dbMarkDebtPaid(group.id, debtId, amount);
+      await dbRecordDebtPayment(group.id, paymentDebt.id, amount);
       await refetch();
+      setActiveDialog(null);
+      setPaymentDebt(null);
+      setPaymentAmount("");
     } catch (err) {
-      alert(
+      setPaymentError(
         err instanceof Error ? err.message : "No se pudo confirmar el pago.",
       );
     } finally {
@@ -387,7 +460,7 @@ export function GroupPage() {
   };
 
   const openDialog = (
-    dialog: "invite" | "search" | "split",
+    dialog: "invite" | "search" | "split" | "summary" | "payment",
     trigger: HTMLElement | null,
   ) => {
     dialogTriggerRef.current = trigger;
@@ -395,9 +468,20 @@ export function GroupPage() {
   };
 
   const closeDialog = () => {
-    if (addingMember || savingSplit) return;
+    if (addingMember || savingSplit || payingId) return;
     setActiveDialog(null);
+    setPaymentDebt(null);
+    setPaymentAmount("");
+    setPaymentError("");
     dialogTriggerRef.current?.focus();
+  };
+
+  const openPaymentDialog = (debt: Debt, trigger: HTMLElement) => {
+    dialogTriggerRef.current = trigger;
+    setPaymentDebt(debt);
+    setPaymentAmount(String(Math.max(0, debt.amount - debt.paidAmount)));
+    setPaymentError("");
+    setActiveDialog("payment");
   };
 
   const focusDebtForm = () => {
@@ -746,7 +830,9 @@ export function GroupPage() {
                           </div>
                           {canConfirm(d) ? (
                             <button
-                              onClick={() => markPaid(d.id, d.amount)}
+                              onClick={(event) =>
+                                openPaymentDialog(d, event.currentTarget)
+                              }
                               disabled={payingId === d.id}
                               style={{
                                 background: C.greenLo,
@@ -762,7 +848,7 @@ export function GroupPage() {
                                 fontFamily: "inherit",
                               }}
                             >
-                              {payingId === d.id ? "…" : "Pagar ✓"}
+                              {payingId === d.id ? "…" : "Registrar pago"}
                             </button>
                           ) : (
                             <div
@@ -1300,6 +1386,24 @@ export function GroupPage() {
                 >
                   Buscar deuda
                 </button>
+                {myMember && (
+                  <button
+                    type="button"
+                    onClick={(event) => openDialog("summary", event.currentTarget)}
+                    style={{
+                      minHeight: 44,
+                      borderRadius: 12,
+                      border: "1px solid rgba(248,113,113,0.3)",
+                      background: C.redLo,
+                      color: C.red,
+                      fontFamily: "inherit",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Mi deuda
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1420,14 +1524,18 @@ export function GroupPage() {
                   ? "Invitar miembro"
                   : activeDialog === "split"
                     ? "Dividir cuenta"
-                    : "Buscar deuda"}
+                    : activeDialog === "payment"
+                      ? "Registrar pago"
+                    : activeDialog === "summary"
+                      ? "Mi deuda"
+                      : "Buscar deuda"}
               </div>
               <button
                 type="button"
                 onClick={closeDialog}
                 aria-label="Cerrar dialogo"
                 title="Cerrar"
-                disabled={addingMember || savingSplit}
+                disabled={addingMember || savingSplit || !!payingId}
                 style={{
                   width: 40,
                   height: 40,
@@ -1435,7 +1543,10 @@ export function GroupPage() {
                   border: `1px solid ${C.border2}`,
                   background: C.surface,
                   color: C.text2,
-                  cursor: addingMember || savingSplit ? "not-allowed" : "pointer",
+                  cursor:
+                    addingMember || savingSplit || payingId
+                      ? "not-allowed"
+                      : "pointer",
                   fontSize: 20,
                   lineHeight: 1,
                 }}
@@ -1444,7 +1555,195 @@ export function GroupPage() {
               </button>
             </div>
 
-            {activeDialog === "invite" ? (
+            {activeDialog === "payment" && paymentDebt ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div
+                  style={{
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 12,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ color: C.text2, fontSize: 12, marginBottom: 5 }}>
+                    Saldo pendiente de {paymentDebtor?.name ?? "la persona deudora"}
+                  </div>
+                  <div
+                    style={{
+                      color: C.red,
+                      fontSize: 24,
+                      fontWeight: 900,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {currencySymbol(paymentDebt.currency)}{fmt(paymentRemaining)} {paymentDebt.currency}
+                  </div>
+                </div>
+
+                <label
+                  htmlFor="group-payment-amount"
+                  style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}
+                >
+                  Monto recibido
+                </label>
+                <div
+                  className="group-dashboard-control-row"
+                  style={{ display: "flex", gap: 8 }}
+                >
+                  <Input
+                    id="group-payment-amount"
+                    value={paymentAmount}
+                    onChange={(value) => {
+                      setPaymentAmount(value);
+                      setPaymentError("");
+                    }}
+                    placeholder="Monto"
+                    type="number"
+                    style={{ flex: 1 }}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      alignItems: "center",
+                      background: C.surface,
+                      border: `1px solid ${C.border2}`,
+                      borderRadius: 10,
+                      color: C.text2,
+                      display: "flex",
+                      fontWeight: 800,
+                      justifyContent: "center",
+                      minWidth: 64,
+                    }}
+                  >
+                    {paymentDebt.currency}
+                  </div>
+                </div>
+                <div style={{ color: C.text3, fontSize: 12, lineHeight: 1.5 }}>
+                  Puedes registrar un abono menor al saldo o completar la deuda.
+                </div>
+                {paymentError && (
+                  <div role="alert" style={{ color: C.red, fontSize: 13 }}>
+                    {paymentError}
+                  </div>
+                )}
+                <Btn
+                  onClick={submitPayment}
+                  disabled={!paymentAmount || !!payingId}
+                >
+                  {payingId ? "Registrando…" : "Registrar pago"}
+                </Btn>
+              </div>
+            ) : activeDialog === "summary" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {myDebtBreakdown.totals.length === 0 ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      background: C.greenLo,
+                      color: C.green,
+                      padding: 18,
+                      textAlign: "center",
+                      fontWeight: 800,
+                    }}
+                  >
+                    No tienes deudas pendientes en esta sesión.
+                  </div>
+                ) : (
+                  <>
+                    <section
+                      aria-label="Total pendiente"
+                      style={{
+                        borderRadius: 14,
+                        border: "1px solid rgba(248,113,113,0.25)",
+                        background: C.redLo,
+                        padding: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: C.text2,
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.06em",
+                          marginBottom: 10,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Total pendiente
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {myDebtBreakdown.totals.map(({ currency, amount }) => (
+                          <div
+                            key={currency}
+                            style={{
+                              color: C.red,
+                              fontSize: 24,
+                              fontWeight: 900,
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {currencySymbol(currency)}{fmt(amount)} {currency}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <div>
+                      <div
+                        style={{
+                          color: C.text2,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          marginBottom: 10,
+                        }}
+                      >
+                        Debes a
+                      </div>
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {myDebtBreakdown.lenders.map((lender) => (
+                          <section
+                            key={lender.lenderId}
+                            aria-label={`Deuda con ${lender.lenderName}`}
+                            style={{
+                              alignItems: "center",
+                              background: C.surface,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 12,
+                              display: "flex",
+                              gap: 12,
+                              justifyContent: "space-between",
+                              padding: 14,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                              <Avatar name={lender.lenderName} size={30} />
+                              <span style={{ color: C.text, fontSize: 14, fontWeight: 800 }}>
+                                {lender.lenderName}
+                              </span>
+                            </div>
+                            <div style={{ display: "grid", gap: 4, textAlign: "right" }}>
+                              {lender.amounts.map(({ currency, amount }) => (
+                                <span
+                                  key={currency}
+                                  style={{
+                                    color: C.red,
+                                    fontSize: 14,
+                                    fontWeight: 850,
+                                    fontVariantNumeric: "tabular-nums",
+                                  }}
+                                >
+                                  {currencySymbol(currency)}{fmt(amount)} {currency}
+                                </span>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : activeDialog === "invite" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <label style={{ color: C.text2, fontSize: 13, fontWeight: 700 }}>
                   Nombre
