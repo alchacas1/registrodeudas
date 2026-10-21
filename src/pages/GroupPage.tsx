@@ -245,6 +245,81 @@ function BalanceBreakdown({
   );
 }
 
+function PersonalBalanceCard({
+  label,
+  totals,
+  accentColor,
+  accentBackground,
+  onClick,
+}: {
+  label: string;
+  totals: DebtAmountByCurrency[];
+  accentColor: string;
+  accentBackground: string;
+  onClick: (trigger: HTMLButtonElement) => void;
+}) {
+  const displayedTotals =
+    totals.length > 0 ? totals : [{ currency: "CRC", amount: 0 }];
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => onClick(event.currentTarget)}
+      style={{
+        background: accentBackground,
+        border: `1px solid ${accentColor}4d`,
+        borderRadius: 14,
+        color: C.text,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        minHeight: 126,
+        padding: 18,
+        textAlign: "left",
+      }}
+    >
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 14,
+        }}
+      >
+        <span style={{ fontSize: 16, fontWeight: 850 }}>{label}</span>
+        <span style={{ color: accentColor, fontSize: 11, fontWeight: 800 }}>
+          Ver detalle
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 5 }}>
+        {displayedTotals.map(({ currency, amount }) => (
+          <div
+            key={currency}
+            style={{
+              color: accentColor,
+              fontSize: 25,
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: 900,
+            }}
+          >
+            {currencySymbol(currency)}{fmt(amount)}
+            <span
+              style={{
+                color: C.text2,
+                fontSize: 11,
+                fontWeight: 700,
+                marginLeft: 6,
+              }}
+            >
+              {currency}
+            </span>
+          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
 // GROUP PAGE
 export function GroupPage() {
   const { id } = useParams<{ id: string }>();
@@ -1064,85 +1139,33 @@ export function GroupPage() {
             </div>
 
             {/* Balances */}
-            <div style={{ ...baseCard, padding: 24 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 18 }}>
-                Estado de Saldos
-              </div>
+            <div
+              role="region"
+              aria-label="Mis saldos"
+              style={{ ...baseCard, padding: 24 }}
+            >
               <div
+                className="group-dashboard-balance-grid"
                 style={{
-                  background: C.surface,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 14,
-                  padding: 20,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: C.text2,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    marginBottom: 8,
-                  }}
-                >
-                  Saldo neto
-                </div>
-                <div
-                  style={{
-                    fontSize: 42,
-                    fontWeight: 900,
-                    color:
-                      totalNet > 0 ? C.green : totalNet < 0 ? C.red : C.text2,
-                    lineHeight: 1,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {totalNet < 0 ? "-" : ""}
-                  {currencySymbol("CRC")}
-                  {fmt(Math.abs(totalNet))}
-                </div>
-                <div
-                  className="group-dashboard-balance-grid"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 12,
-                    marginTop: 18,
-                  }}
-                >
-                  <div style={{ background: C.bg, borderRadius: 12, padding: 14 }}>
-                    <div style={{ color: C.text3, fontSize: 12, fontWeight: 700 }}>
-                      Debes
-                    </div>
-                    <div
-                      style={{
-                        color: C.red,
-                        fontSize: 20,
-                        fontWeight: 850,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {currencySymbol("CRC")}
-                      {fmt(totalOwes)}
-                    </div>
-                  </div>
-                  <div style={{ background: C.bg, borderRadius: 12, padding: 14 }}>
-                    <div style={{ color: C.text3, fontSize: 12, fontWeight: 700 }}>
-                      Te deben
-                    </div>
-                    <div
-                      style={{
-                        color: C.green,
-                        fontSize: 20,
-                        fontWeight: 850,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {currencySymbol("CRC")}
-                      {fmt(totalIsOwed)}
-                    </div>
-                  </div>
-                </div>
+                <PersonalBalanceCard
+                  label="Mi deuda"
+                  totals={myDebtBreakdown.totals}
+                  accentColor={C.red}
+                  accentBackground={C.redLo}
+                  onClick={(trigger) => openDialog("summary", trigger)}
+                />
+                <PersonalBalanceCard
+                  label="Me deben"
+                  totals={myReceivableBreakdown.totals}
+                  accentColor={C.green}
+                  accentBackground={C.greenLo}
+                  onClick={(trigger) => openDialog("receivables", trigger)}
+                />
               </div>
               <div
                 style={{
@@ -1579,44 +1602,6 @@ export function GroupPage() {
                 >
                   Buscar deuda
                 </button>
-                {myMember && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={(event) => openDialog("summary", event.currentTarget)}
-                      style={{
-                        minHeight: 44,
-                        borderRadius: 12,
-                        border: "1px solid rgba(248,113,113,0.3)",
-                        background: C.redLo,
-                        color: C.red,
-                        fontFamily: "inherit",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Mi deuda
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) =>
-                        openDialog("receivables", event.currentTarget)
-                      }
-                      style={{
-                        minHeight: 44,
-                        borderRadius: 12,
-                        border: "1px solid rgba(74,222,128,0.3)",
-                        background: C.greenLo,
-                        color: C.green,
-                        fontFamily: "inherit",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Me deben
-                    </button>
-                  </>
-                )}
               </div>
             </div>
 

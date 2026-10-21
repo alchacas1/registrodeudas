@@ -167,6 +167,49 @@ describe("GroupPage debt cards", () => {
     ).toBeTruthy();
   });
 
+  it("replaces the net balance block with personal debt and receivable cards", async () => {
+    authState.user = { uid: "debtor-user" };
+    getFullGroup.mockResolvedValue({
+      ...group,
+      members: [
+        { ...group.members[0], userId: "debtor-user" },
+        group.members[1],
+      ],
+      debts: [
+        {
+          ...group.debts[0],
+          amount: 14772,
+        },
+        {
+          ...group.debts[0],
+          id: "debt-reverse",
+          debtorId: "lender",
+          lenderId: "debtor",
+          amount: 14772,
+        },
+      ],
+    });
+
+    renderGroupPage();
+
+    const balances = await screen.findByRole("region", {
+      name: "Mis saldos",
+    });
+    const debtCard = within(balances).getByRole("button", {
+      name: "Mi deuda",
+    });
+    const receivableCard = within(balances).getByRole("button", {
+      name: "Me deben",
+    });
+
+    expect(within(debtCard).getByText(/14(?:[.\s\u00a0])772/)).toBeTruthy();
+    expect(
+      within(receivableCard).getByText(/14(?:[.\s\u00a0])772/),
+    ).toBeTruthy();
+    expect(within(balances).queryByText("Saldo neto")).toBeNull();
+    expect(screen.queryByText("Estado de Saldos")).toBeNull();
+  });
+
   it("shows the signed-in member's total debt and amounts owed to each person", async () => {
     authState.user = { uid: "debtor-user" };
     getFullGroup.mockResolvedValue({
