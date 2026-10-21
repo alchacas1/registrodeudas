@@ -230,6 +230,69 @@ describe("GroupPage debt cards", () => {
     expect(within(dialog).queryByText(/3(?:[.\s\u00a0])000/)).toBeNull();
   });
 
+  it("shows how much the signed-in member is owed by each debtor", async () => {
+    authState.user = { uid: "lender-user" };
+    getFullGroup.mockResolvedValue({
+      ...group,
+      members: [
+        group.members[0],
+        { ...group.members[1], userId: "lender-user" },
+        { id: "maria", name: "Maria", email: null, avatar: "", joinedAt: "" },
+      ],
+      debts: [
+        group.debts[0],
+        {
+          ...group.debts[0],
+          id: "debt-2",
+          amount: 2000,
+          paidAmount: 500,
+          status: "parcial",
+          reason: "Supermercado",
+        },
+        {
+          ...group.debts[0],
+          id: "debt-3",
+          debtorId: "maria",
+          amount: 12,
+          paidAmount: 0,
+          currency: "USD",
+          reason: "Taxi",
+        },
+        {
+          ...group.debts[0],
+          id: "debt-paid",
+          debtorId: "maria",
+          amount: 9000,
+          paidAmount: 9000,
+          status: "pagada",
+        },
+        {
+          ...group.debts[0],
+          id: "debt-reverse",
+          debtorId: "lender",
+          lenderId: "debtor",
+          amount: 3000,
+        },
+      ],
+    });
+
+    renderGroupPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Me deben" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Me deben" });
+    const totals = within(dialog).getByLabelText("Total por cobrar");
+    expect(within(totals).getByText(/6(?:[.\s\u00a0])060 CRC/)).toBeTruthy();
+    expect(within(totals).getByText(/12 USD/)).toBeTruthy();
+
+    const andersDebt = within(dialog).getByLabelText("Deuda de Anders1");
+    expect(within(andersDebt).getByText(/6(?:[.\s\u00a0])060 CRC/)).toBeTruthy();
+    const mariaDebt = within(dialog).getByLabelText("Deuda de Maria");
+    expect(within(mariaDebt).getByText(/12 USD/)).toBeTruthy();
+    expect(within(dialog).queryByText(/9(?:[.\s\u00a0])000/)).toBeNull();
+    expect(within(dialog).queryByText(/3(?:[.\s\u00a0])000/)).toBeNull();
+  });
+
   it("compares and compensates mutual debt in the selected currency", async () => {
     getFullGroup.mockResolvedValue({
       ...group,
