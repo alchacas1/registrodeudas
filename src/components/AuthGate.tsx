@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { completeEmailLink, isMagicLink, joinGroupWithCredentials, sendMagicLink, useCurrentUser } from "../lib/auth";
+import { completeEmailLink, isMagicLink, joinGroupWithCredentials, sendMagicLink, signInWithGoogle, useCurrentUser } from "../lib/auth";
 import { firebaseAuthErrorMessage, normalizeEmail } from "../lib/auth-helpers";
 import {
   buildEntryRedirectUrl,
@@ -115,6 +115,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      setMessage(firebaseAuthErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (magicLink) {
@@ -166,6 +178,29 @@ export function AuthGate({ children }: { children: ReactNode }) {
             <p style={{ color: C.text2, margin: "10px 0 0", lineHeight: 1.5 }}>
               Elige una opción para comenzar.
             </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleGoogleSignIn()}
+            style={{
+              ...baseCard,
+              width: "100%",
+              padding: "14px 18px",
+              color: C.text,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 15,
+              fontWeight: 800,
+              textAlign: "center",
+            }}
+          >
+            Continuar con Google
+          </button>
+          {message && <p role="alert" style={{ color: C.red, fontSize: 13, margin: 0, textAlign: "center" }}>{message}</p>}
+          <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 10, color: C.text2, fontSize: 12 }}>
+            <span style={{ flex: 1, height: 1, background: C.border }} />
+            o usa un enlace de correo
+            <span style={{ flex: 1, height: 1, background: C.border }} />
           </div>
           <ChoiceButton
             title="Crear un grupo"

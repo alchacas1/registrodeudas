@@ -9,6 +9,7 @@ service cloud.firestore {
     function isMemberAfter(groupId) { return signedIn() && sessionAllows(groupId) && existsAfter(membershipPath(groupId)); }
     function isOwner(groupId) { return signedIn() && !isGroupSession() && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid; }
     function verifiedEmailMatches(data) { return signedIn() && !isGroupSession() && request.auth.token.email_verified == true && request.auth.token.email == data.email; }
+    function isSyntheticGroupUid(value) { return value is string && value.matches('^group-[0-9a-f]{32}$'); }
 
     match /groups/{groupId} {
       allow create: if signedIn() && !isGroupSession() && request.resource.data.ownerId == request.auth.uid;
@@ -16,7 +17,7 @@ service cloud.firestore {
       allow update, delete: if isOwner(groupId);
 
       match /members/{memberId} {
-        allow read: if isMember(groupId) || (resource.data.userId == null && verifiedEmailMatches(resource.data));
+        allow read: if isMember(groupId) || verifiedEmailMatches(resource.data);
         allow create: if isMemberAfter(groupId) && (
           request.resource.data.userId == null
           || (!exists(/databases/$(database)/documents/groups/$(groupId))
@@ -24,7 +25,7 @@ service cloud.firestore {
             && request.resource.data.userId == request.auth.uid)
         );
         allow update: if (isOwner(groupId)) || (
-          resource.data.userId == null
+          (resource.data.userId == null || isSyntheticGroupUid(resource.data.userId))
           && request.resource.data.userId == request.auth.uid
           && verifiedEmailMatches(resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
@@ -40,8 +41,9 @@ service cloud.firestore {
           && (
             (getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
               && getAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId == request.auth.uid)
-            || (get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId == null
-              && verifiedEmailMatches(get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data))
+            || (verifiedEmailMatches(get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data)
+              && (get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId == null
+                || isSyntheticGroupUid(get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.memberId)).data.userId)))
           );
         allow update: if false;
         allow delete: if isOwner(groupId);
@@ -72,7 +74,10 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /{path=**}/members/{memberId} {
-      allow read: if resource.data.userId == null && verifiedEmailMatches(resource.data);
+      // The verified email may discover pending, synthetic direct-access, and
+      // already-claimed rows. Updates still accept only null or group-* UIDs.
+      // Restricted group sessions are rejected by verifiedEmailMatches().
+      allow read: if verifiedEmailMatches(resource.data);
     }
     match /appMetadata/{document} { allow read: if signedIn() && !isGroupSession(); allow write: if false; }
   }

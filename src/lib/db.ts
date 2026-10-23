@@ -1,10 +1,10 @@
 import type { User } from "firebase/auth";
 import { sendSignInLinkToEmail } from "firebase/auth";
-import { addDoc, collection, collectionGroup, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, collectionGroup, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentReference } from "firebase/firestore";
 import { auth, firestore } from "./firebase";
 import { EMAIL_STORAGE_KEY, normalizeEmail } from "./auth-helpers";
 import { generateAccessCode, timestampToIso } from "./db-helpers";
-import type { Debt, DebtStatus, Group, GroupType, Member } from "../types";
+import type { Debt, DebtStatus, Group, GroupListItem, GroupType, Member } from "../types";
 
 type Data = Record<string, unknown>;
 function requireUser(): User { const user = auth.currentUser; if (!user) throw new Error("Debes iniciar sesión."); return user; }
@@ -50,6 +50,37 @@ export async function getFullGroup(id: string): Promise<Group | null> {
   if (!groupSnap.exists()) return null; const row = groupSnap.data();
   return { id, ownerId: String(row.ownerId), name: String(row.name), type: String(row.type) as GroupType, description: row.description ? String(row.description) : undefined, accessCode: String(row.accessCode), createdAt: timestampToIso(row.createdAt), members: membersSnap.docs.map((item) => mapMember(item.id, item.data())), debts: debtsSnap.docs.map((item) => mapDebt(item.id, item.data())).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
 }
+export async function listMyGroups(user: User): Promise<GroupListItem[]> {
+  if (!user.email || !user.emailVerified) return [];
+  await claimPendingMemberships(user);
+
+  const email = normalizeEmail(user.email);
+  const memberships = await getDocs(query(
+    collectionGroup(firestore, "members"),
+    where("email", "==", email),
+    where("userId", "==", user.uid),
+  ));
+  const groupRefs = new Map<string, DocumentReference>();
+  for (const membership of memberships.docs) {
+    const groupRef = membership.ref.parent.parent;
+    if (groupRef) groupRefs.set(groupRef.id, groupRef);
+  }
+
+  const groupSnaps = await Promise.all([...groupRefs.values()].map((groupRef) => getDoc(groupRef)));
+  return groupSnaps
+    .filter((groupSnap) => groupSnap.exists())
+    .map((groupSnap) => {
+      const row = groupSnap.data();
+      return {
+        id: groupSnap.id,
+        name: String(row.name),
+        type: String(row.type) as GroupType,
+        description: row.description ? String(row.description) : undefined,
+        createdAt: timestampToIso(row.createdAt),
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 export async function addMember(groupId: string, name: string, email: string, redirectTo: string): Promise<Member> {
   requireUser(); const normalized = normalizeEmail(email);
   const ref = await addDoc(collection(firestore, "groups", groupId, "members"), { name, email: normalized, userId: null, joinedAt: serverTimestamp() });
@@ -93,6 +124,28 @@ export async function recordDebtPayment(groupId: string, debtId: string, payment
 }
 export async function claimPendingMemberships(user: User) {
   if (!user.email || !user.emailVerified) return;
-  const pending = await getDocs(query(collectionGroup(firestore, "members"), where("email", "==", normalizeEmail(user.email)), where("userId", "==", null)));
-  for (const member of pending.docs) { const groupRef = member.ref.parent.parent; if (!groupRef) continue; const membershipRef = doc(groupRef, "userMemberships", user.uid); await runTransaction(firestore, async (tx) => { const fresh = await tx.get(member.ref); if (fresh.data()?.userId == null) { tx.update(member.ref, { userId: user.uid }); tx.set(membershipRef, { memberId: member.id, email: normalizeEmail(user.email!) }); } }); }
+  const email = normalizeEmail(user.email);
+  const matching = await getDocs(query(
+    collectionGroup(firestore, "members"),
+    where("email", "==", email),
+  ));
+  for (const member of matching.docs) {
+    const groupRef = member.ref.parent.parent;
+    if (!groupRef) continue;
+    const membershipRef = doc(groupRef, "userMemberships", user.uid);
+    await runTransaction(firestore, async (tx) => {
+      const fresh = await tx.get(member.ref);
+      const row = fresh.data();
+      const currentUserId = row?.userId;
+      const syntheticGroupUser = typeof currentUserId === "string"
+        && /^group-[0-9a-f]{32}$/.test(currentUserId);
+      if (
+        normalizeEmail(String(row?.email ?? "")) !== email
+        || currentUserId === user.uid
+        || (currentUserId != null && !syntheticGroupUser)
+      ) return;
+      tx.update(member.ref, { userId: user.uid });
+      tx.set(membershipRef, { memberId: member.id, email });
+    });
+  }
 }

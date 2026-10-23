@@ -11,6 +11,7 @@ const authState = vi.hoisted(() => ({
 const sendMagicLink = vi.hoisted(() => vi.fn());
 const completeEmailLink = vi.hoisted(() => vi.fn());
 const joinGroupWithCredentials = vi.hoisted(() => vi.fn());
+const signInWithGoogle = vi.hoisted(() => vi.fn());
 
 vi.mock("../lib/auth", () => ({
   useCurrentUser: () => authState,
@@ -18,6 +19,7 @@ vi.mock("../lib/auth", () => ({
   sendMagicLink,
   completeEmailLink,
   joinGroupWithCredentials,
+  signInWithGoogle,
 }));
 
 describe("AuthGate", () => {
@@ -28,6 +30,7 @@ describe("AuthGate", () => {
     sendMagicLink.mockReset().mockResolvedValue(undefined);
     completeEmailLink.mockReset().mockResolvedValue(null);
     joinGroupWithCredentials.mockReset().mockResolvedValue({ groupId: "group-1" });
+    signInWithGoogle.mockReset().mockResolvedValue({ uid: "google-user" });
     window.history.replaceState({}, "", "/");
   });
 
@@ -39,6 +42,23 @@ describe("AuthGate", () => {
     expect(screen.getByRole("button", { name: /crear un grupo/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /unirme a un grupo/i })).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("signs in with Google from the initial screen", async () => {
+    render(<AuthGate><div>privado</div></AuthGate>);
+
+    fireEvent.click(screen.getByRole("button", { name: /continuar con google/i }));
+
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledOnce());
+  });
+
+  it("explains when the browser blocks the Google popup", async () => {
+    signInWithGoogle.mockRejectedValue({ code: "auth/popup-blocked" });
+    render(<AuthGate><div>privado</div></AuthGate>);
+
+    fireEvent.click(screen.getByRole("button", { name: /continuar con google/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/bloqueó la ventana de google/i);
   });
 
   it("asks for email after choosing to create a group", () => {

@@ -36,6 +36,8 @@ export interface Group {
   accessCode: string; // código simple para unirse
 }
 
+export type GroupListItem = Pick<Group, "id" | "name" | "type" | "description" | "createdAt">;
+
 export interface DebtSummary {
   memberId: string;
   memberName: string;

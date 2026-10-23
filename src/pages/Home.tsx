@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { GroupType } from "../types";
-import { createGroup as dbCreateGroup, findGroupByCode } from "../lib/db";
+import type { GroupListItem, GroupType } from "../types";
+import { createGroup as dbCreateGroup, findGroupByCode, listMyGroups } from "../lib/db";
 import { signOut, useCurrentUser } from "../lib/auth";
 import { normalizeAccessCode, readEntryIntent } from "../lib/entry-flow";
 import { baseCard, baseInput, C } from "../components/design";
@@ -19,7 +19,8 @@ const pageStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   position: "relative",
-  overflow: "hidden",
+  overflowX: "hidden",
+  overflowY: "auto",
 };
 
 const quietButtonStyle: CSSProperties = {
@@ -76,6 +77,9 @@ export function Home() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [formError, setFormError] = useState("");
+  const [myGroups, setMyGroups] = useState<GroupListItem[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupsError, setGroupsError] = useState("");
   const resumedJoinStarted = useRef(false);
   const restrictedSignOutStarted = useRef(false);
 
@@ -84,6 +88,25 @@ export function Home() {
     restrictedSignOutStarted.current = true;
     void signOut();
   }, [groupSession]);
+
+  useEffect(() => {
+    if (authLoading || groupSession) return;
+    if (!user) return;
+
+    let active = true;
+    listMyGroups(user)
+      .then((groups) => {
+        if (active) setMyGroups(groups);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (active) setGroupsError("No se pudieron cargar tus grupos.");
+      })
+      .finally(() => {
+        if (active) setGroupsLoading(false);
+      });
+    return () => { active = false; };
+  }, [authLoading, groupSession, user]);
 
   const handleCreate = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -220,6 +243,37 @@ export function Home() {
 
           {mode === null && (
             <section style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 10, marginBottom: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 21 }}>Mis grupos</h2>
+                {groupsLoading && <p style={{ color: C.text2, fontSize: 13, margin: 0 }}>Cargando grupos…</p>}
+                {!groupsLoading && groupsError && <p role="alert" style={{ color: C.red, fontSize: 13, margin: 0 }}>{groupsError}</p>}
+                {!groupsLoading && !groupsError && myGroups.length === 0 && (
+                  <p style={{ color: C.text2, fontSize: 13, margin: 0 }}>Todavía no perteneces a ningún grupo.</p>
+                )}
+                {!groupsLoading && !groupsError && myGroups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    aria-label={`Abrir grupo ${group.name}`}
+                    onClick={() => navigate(`/group/${group.id}`)}
+                    style={{
+                      ...baseCard,
+                      width: "100%",
+                      padding: "15px 17px",
+                      color: C.text,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ display: "block", fontWeight: 800, fontSize: 16 }}>{group.name}</span>
+                    <span style={{ display: "block", color: C.text2, fontSize: 12, marginTop: 4 }}>
+                      <span style={{ textTransform: "capitalize" }}>{group.type}</span>
+                      {group.description ? ` · ${group.description}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
               <div style={{ textAlign: "center", marginBottom: 2 }}>
                 <h2 style={{ margin: 0, fontSize: 21 }}>¿Qué quieres hacer?</h2>
               </div>

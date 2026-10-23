@@ -6,9 +6,10 @@ import { Home } from "./Home";
 
 const createGroup = vi.hoisted(() => vi.fn());
 const findGroupByCode = vi.hoisted(() => vi.fn());
+const listMyGroups = vi.hoisted(() => vi.fn());
 const signOut = vi.hoisted(() => vi.fn());
 const authState = vi.hoisted(() => ({
-  user: { uid: "user-1", email: "persona@example.com" },
+  user: { uid: "user-1", email: "persona@example.com", emailVerified: true },
   loading: false,
   groupSession: false,
 }));
@@ -16,6 +17,7 @@ const authState = vi.hoisted(() => ({
 vi.mock("../lib/db", () => ({
   createGroup,
   findGroupByCode,
+  listMyGroups,
 }));
 vi.mock("../lib/auth", () => ({
   useCurrentUser: () => authState,
@@ -37,6 +39,7 @@ describe("Home entry flow", () => {
   beforeEach(() => {
     createGroup.mockReset();
     findGroupByCode.mockReset();
+    listMyGroups.mockReset().mockResolvedValue([]);
     signOut.mockReset().mockResolvedValue(undefined);
     authState.groupSession = false;
   });
@@ -50,6 +53,21 @@ describe("Home entry flow", () => {
     expect(screen.getByRole("button", { name: /unirme a un grupo/i })).toBeTruthy();
     expect(screen.queryByPlaceholderText(/nombre del grupo/i)).toBeNull();
     expect(screen.queryByLabelText(/código del grupo/i)).toBeNull();
+  });
+
+  it("shows every group for the authenticated account and opens the selected one", async () => {
+    listMyGroups.mockResolvedValue([
+      { id: "group-1", name: "Viaje", type: "amigos", description: "Octubre", createdAt: "2026-10-01T00:00:00.000Z" },
+      { id: "group-2", name: "Casa", type: "familia", createdAt: "2026-09-01T00:00:00.000Z" },
+    ]);
+
+    renderHome();
+
+    expect(await screen.findByRole("heading", { name: /mis grupos/i })).toBeTruthy();
+    expect(screen.getByText("Viaje")).toBeTruthy();
+    expect(screen.getByText("Casa")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /abrir grupo viaje/i }));
+    expect(await screen.findByText("Grupo abierto")).toBeTruthy();
   });
 
   it("shows the app version in the footer", () => {

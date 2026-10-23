@@ -78,6 +78,132 @@ describe("Firestore rules", () => {
     invalid.set(doc(impostor, "groups/group-1/userMemberships/impostor"), { memberId: "invite-1", email: "other@example.com" });
     await assertFails(invalid.commit());
   });
+  it("allows a verified normal user to list only their claimed memberships", async () => {
+    await env.clearFirestore();
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "groups/group-1/members/member-1"), {
+        name: "Persona",
+        email: "person@example.com",
+        userId: "person",
+      });
+      await setDoc(doc(db, "groups/group-2/members/member-2"), {
+        name: "Persona",
+        email: "person@example.com",
+        userId: "person",
+      });
+    });
+    const db = env.authenticatedContext("person", {
+      email: "person@example.com",
+      email_verified: true,
+    }).firestore();
+
+    await assertSucceeds(getDocs(query(
+      collectionGroup(db, "members"),
+      where("email", "==", "person@example.com"),
+      where("userId", "==", "person"),
+    )));
+  });
+  it("allows a verified account to migrate its synthetic group membership", async () => {
+    await env.clearFirestore();
+    const syntheticUid = "group-0123456789abcdef0123456789abcdef";
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "groups/group-1"), { ownerId: "owner" });
+      await setDoc(doc(db, "groups/group-1/members/member-1"), {
+        name: "Persona",
+        email: "person@example.com",
+        userId: syntheticUid,
+      });
+      await setDoc(doc(db, `groups/group-1/userMemberships/${syntheticUid}`), {
+        memberId: "member-1",
+        email: "person@example.com",
+      });
+    });
+    const db = env.authenticatedContext("person", {
+      email: "person@example.com",
+      email_verified: true,
+    }).firestore();
+
+    await assertSucceeds(getDocs(query(
+      collectionGroup(db, "members"),
+      where("email", "==", "person@example.com"),
+    )));
+    const batch = writeBatch(db);
+    batch.update(doc(db, "groups/group-1/members/member-1"), { userId: "person" });
+    batch.set(doc(db, "groups/group-1/userMemberships/person"), {
+      memberId: "member-1",
+      email: "person@example.com",
+    });
+    await assertSucceeds(batch.commit());
+  });
+  it("does not let a verified email replace a normal user's membership UID", async () => {
+    await env.clearFirestore();
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "groups/group-1"), { ownerId: "owner" });
+      await setDoc(doc(db, "groups/group-1/members/member-1"), {
+        name: "Persona",
+        email: "person@example.com",
+        userId: "existing-normal-user",
+      });
+    });
+    const db = env.authenticatedContext("person", {
+      email: "person@example.com",
+      email_verified: true,
+    }).firestore();
+    const batch = writeBatch(db);
+    batch.update(doc(db, "groups/group-1/members/member-1"), { userId: "person" });
+    batch.set(doc(db, "groups/group-1/userMemberships/person"), {
+      memberId: "member-1",
+      email: "person@example.com",
+    });
+
+    await assertFails(batch.commit());
+  });
+  it("denies listing another user's claimed memberships", async () => {
+    await env.clearFirestore();
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "groups/group-1/members/member-1"), {
+        name: "Otra persona",
+        email: "other@example.com",
+        userId: "other",
+      });
+    });
+    const db = env.authenticatedContext("person", {
+      email: "person@example.com",
+      email_verified: true,
+    }).firestore();
+
+    await assertFails(getDocs(query(
+      collectionGroup(db, "members"),
+      where("email", "==", "other@example.com"),
+      where("userId", "==", "other"),
+    )));
+  });
+  it("denies collection-group membership listing to restricted group sessions", async () => {
+    await env.clearFirestore();
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "groups/group-1/members/member-1"), {
+        name: "Invitada",
+        email: "guest@example.com",
+        userId: "group-user",
+      });
+    });
+    const db = env.authenticatedContext("group-user", {
+      email: "guest@example.com",
+      email_verified: true,
+      groupSession: true,
+      groupId: "group-1",
+      memberId: "member-1",
+    }).firestore();
+
+    await assertFails(getDocs(query(
+      collectionGroup(db, "members"),
+      where("email", "==", "guest@example.com"),
+      where("userId", "==", "group-user"),
+    )));
+  });
   it("allows only the lender to confirm payment", async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (context) => {

@@ -3,24 +3,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
 const signInWithCustomToken = vi.hoisted(() => vi.fn());
+const signInWithPopup = vi.hoisted(() => vi.fn());
+const googleProvider = vi.hoisted(() => ({ setCustomParameters: vi.fn() }));
 const getIdTokenResult = vi.hoisted(() => vi.fn());
 const onAuthStateChanged = vi.hoisted(() => vi.fn());
 const claimPendingMemberships = vi.hoisted(() => vi.fn());
 const auth = vi.hoisted(() => ({ name: "test-auth" }));
 
 vi.mock("firebase/auth", () => ({
+  GoogleAuthProvider: vi.fn(function GoogleAuthProvider() { return googleProvider; }),
   getIdTokenResult,
   isSignInWithEmailLink: vi.fn(),
   onAuthStateChanged,
   sendSignInLinkToEmail: vi.fn(),
   signInWithEmailLink: vi.fn(),
   signInWithCustomToken,
+  signInWithPopup,
   signOut: vi.fn(),
 }));
 vi.mock("./firebase", () => ({ auth }));
 vi.mock("./db", () => ({ claimPendingMemberships }));
 
-import { DirectJoinError, joinGroupWithCredentials, useCurrentUser } from "./auth";
+import { DirectJoinError, joinGroupWithCredentials, signInWithGoogle, useCurrentUser } from "./auth";
+
+describe("signInWithGoogle", () => {
+  it("opens the Google account selector and returns the authenticated user", async () => {
+    const user = { uid: "google-user", email: "person@example.com" };
+    claimPendingMemberships.mockReset().mockResolvedValue(undefined);
+    signInWithPopup.mockResolvedValueOnce({ user });
+
+    await expect(signInWithGoogle()).resolves.toBe(user);
+
+    expect(googleProvider.setCustomParameters).toHaveBeenCalledWith({ prompt: "select_account" });
+    expect(signInWithPopup).toHaveBeenCalledWith(auth, googleProvider);
+    expect(claimPendingMemberships).toHaveBeenCalledWith(user);
+  });
+});
 
 describe("useCurrentUser", () => {
   beforeEach(() => {
