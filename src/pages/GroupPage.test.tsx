@@ -571,6 +571,82 @@ describe("GroupPage debt cards", () => {
     expect(screen.queryByText("Taxi de regreso")).toBeNull();
   });
 
+  it("hides debts between other members from the list, summary, and search", async () => {
+    authState.user = { uid: "alvaro-user" };
+    getFullGroup.mockResolvedValue({
+      ...group,
+      members: [
+        group.members[0],
+        { ...group.members[1], userId: "alvaro-user" },
+        { id: "octavio", name: "Octavio", email: null, avatar: "", joinedAt: "" },
+      ],
+      debts: [
+        group.debts[0],
+        {
+          ...group.debts[0],
+          id: "alvaro-to-octavio",
+          debtorId: "lender",
+          lenderId: "octavio",
+          amount: 2000,
+          reason: "Alvaro con Octavio",
+        },
+        {
+          ...group.debts[0],
+          id: "anders-to-octavio",
+          debtorId: "debtor",
+          lenderId: "octavio",
+          amount: 7000,
+          reason: "Anders con Octavio",
+        },
+        {
+          ...group.debts[0],
+          id: "octavio-to-anders",
+          debtorId: "octavio",
+          lenderId: "debtor",
+          amount: 9000,
+          reason: "Octavio con Anders",
+        },
+      ],
+    });
+
+    renderGroupPage();
+
+    expect(await screen.findByText("CODEX SEPTIEMBRE")).toBeTruthy();
+    expect(screen.getByText("Alvaro con Octavio")).toBeTruthy();
+    expect(screen.queryByText("Anders con Octavio")).toBeNull();
+    expect(screen.queryByText("Octavio con Anders")).toBeNull();
+    expect(screen.getByText("2 de 2 activas")).toBeTruthy();
+
+    const summary = screen.getByRole("region", { name: "Resumen del grupo" });
+    expect(within(summary).getByText("2 deudas activas")).toBeTruthy();
+    expect(within(summary).getByText(/6(?:[.\s\u00a0])560 CRC/)).toBeTruthy();
+    expect(within(summary).queryByText(/22(?:[.\s\u00a0])560 CRC/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Buscar deuda" }));
+    const dialog = await screen.findByRole("dialog", { name: "Buscar deuda" });
+    fireEvent.change(within(dialog).getByLabelText("Deudor"), {
+      target: { value: "debtor" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Prestamista"), {
+      target: { value: "octavio" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Buscar" }));
+    const searchedTotal = within(dialog).getByText("Deuda total").parentElement;
+    expect(searchedTotal).toBeTruthy();
+    expect(within(searchedTotal as HTMLElement).getByText("₡0")).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText("Persona A"), {
+      target: { value: "debtor" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Persona B"), {
+      target: { value: "octavio" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Comparar" }));
+    expect(
+      within(dialog).getByText("No hay deuda pendiente entre ambos."),
+    ).toBeTruthy();
+  });
+
   it("reveals debt details from each compact row", async () => {
     renderGroupPage();
 

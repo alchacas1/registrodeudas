@@ -626,17 +626,26 @@ export function GroupPage() {
   );
 }
 
-  const activeDebts = group.debts.filter((d) => d.status !== "pagada");
   const myMember = user
     ? group.members.find((m) => m.userId === user.uid)
     : undefined;
+  const sessionDebts = myMember
+    ? group.debts.filter(
+        (debt) =>
+          debt.debtorId === myMember.id || debt.lenderId === myMember.id,
+      )
+    : group.debts;
+  const activeDebts = sessionDebts.filter((d) => d.status !== "pagada");
   const myDebtBreakdown = computeMemberDebtBreakdown(group, myMember?.id);
   const myReceivableBreakdown = computeMemberReceivableBreakdown(
     group,
     myMember?.id,
   );
   const personalBalances = computePersonalBalances(group, myMember?.id);
-  const groupPendingTotals = computeGroupPendingTotals(group);
+  const groupPendingTotals = computeGroupPendingTotals({
+    ...group,
+    debts: sessionDebts,
+  });
   const personalBalanceState =
     personalBalances.length === 0 || personalBalances.every(({ net }) => net === 0)
       ? "Al día"
@@ -767,7 +776,7 @@ export function GroupPage() {
   const doSearch = () => {
     if (searchDebtor && searchLender)
       setSearchResult(
-        computeDebtBetween(searchDebtor, searchLender, group.debts),
+        computeDebtBetween(searchDebtor, searchLender, sessionDebts),
       );
   };
 
@@ -783,7 +792,7 @@ export function GroupPage() {
         comparePersonA,
         comparePersonB,
         compareCurrency,
-        group.debts,
+        sessionDebts,
       ),
     );
   };
