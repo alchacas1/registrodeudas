@@ -169,6 +169,41 @@ describe("GroupPage debt cards", () => {
     ).toBeTruthy();
   });
 
+  it("does not refocus the amount field while a payment is being registered", async () => {
+    authState.user = { uid: "lender-user" };
+    group.members[1].userId = "lender-user";
+    let finishPayment: (() => void) | undefined;
+    recordDebtPayment.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        finishPayment = resolve;
+      }),
+    );
+
+    renderGroupPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Registrar pago" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Registrar pago" });
+    const amountInput = within(dialog).getByLabelText("Monto recibido");
+    const submitButton = within(dialog).getByRole("button", {
+      name: "Registrar pago",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(amountInput));
+    submitButton.focus();
+    fireEvent.click(submitButton);
+    await waitFor(() => expect(recordDebtPayment).toHaveBeenCalledTimes(1));
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+
+    expect(screen.getByRole("dialog", { name: "Registrar pago" })).toBe(dialog);
+    expect(document.activeElement).not.toBe(amountInput);
+
+    finishPayment?.();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Registrar pago" })).toBeNull(),
+    );
+  });
+
   it("replaces the net balance block with personal debt and receivable cards", async () => {
     authState.user = { uid: "debtor-user" };
     getFullGroup.mockResolvedValue({
@@ -428,6 +463,23 @@ describe("GroupPage debt cards", () => {
 
     const debtorSelect = screen.getByLabelText("¿Quién debe?");
     await waitFor(() => expect(document.activeElement).toBe(debtorSelect));
+  });
+
+  it("keeps focus in a text field while its value changes", async () => {
+    renderGroupPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ Nueva deuda" }));
+
+    const debtorSelect = screen.getByLabelText("¿Quién debe?");
+    const reasonInput = screen.getByLabelText("Motivo opcional");
+    await waitFor(() => expect(document.activeElement).toBe(debtorSelect));
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+    reasonInput.focus();
+    fireEvent.change(reasonInput, { target: { value: "E" } });
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+
+    expect(document.activeElement).toBe(reasonInput);
+    expect((reasonInput as HTMLInputElement).value).toBe("E");
   });
 
   it("registers a normal debt through the modal with the existing database contract", async () => {

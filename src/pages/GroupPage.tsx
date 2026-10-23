@@ -508,6 +508,26 @@ export function GroupPage() {
 
   useEffect(() => {
     if (!activeDialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      const panel = dialogPanelRef.current;
+      const initialControl =
+        panel?.querySelector<HTMLElement>("[data-dialog-initial-focus]") ??
+        panel?.querySelector<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([data-dialog-close])',
+        ) ??
+        panel?.querySelector<HTMLElement>('button:not([disabled])');
+      initialControl?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activeDialog]);
+
+  useEffect(() => {
+    if (!activeDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !addingMember && !savingSplit && !payingId && !addingDebt) {
         closeDialog();
@@ -528,21 +548,8 @@ export function GroupPage() {
         }
       }
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
-    window.requestAnimationFrame(() => {
-      const panel = dialogPanelRef.current;
-      const initialControl =
-        panel?.querySelector<HTMLElement>("[data-dialog-initial-focus]") ??
-        panel?.querySelector<HTMLElement>(
-          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([data-dialog-close])',
-        ) ??
-        panel?.querySelector<HTMLElement>('button:not([disabled])');
-      initialControl?.focus();
-    });
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [
