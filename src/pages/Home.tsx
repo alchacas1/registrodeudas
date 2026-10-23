@@ -198,7 +198,7 @@ export function Home() {
         <div style={{ maxWidth: 440, width: "100%" }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
             <img
-              src="/Icono.png"
+              src="/compas-logo.png"
               alt=""
               aria-hidden="true"
               style={{

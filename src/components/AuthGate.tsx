@@ -33,7 +33,7 @@ function Brand() {
   return (
     <div style={{ textAlign: "center", marginBottom: 4 }}>
       <img
-        src="/Icono.png"
+        src="/compas-logo.png"
         alt=""
         aria-hidden="true"
         style={{ width: 58, height: 58, borderRadius: 17, objectFit: "cover", marginBottom: 14 }}
